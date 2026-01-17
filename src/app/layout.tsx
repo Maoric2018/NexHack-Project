@@ -1,17 +1,15 @@
 import type { Metadata } from "next";
-import { Rajdhani, Orbitron } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const rajdhani = Rajdhani({
-  weight: ['300', '400', '500', '600', '700'],
+const geistSans = Geist({
+  variable: "--font-geist-sans",
   subsets: ["latin"],
-  variable: "--font-rajdhani",
 });
 
-const orbitron = Orbitron({
-    weight: ['400', '500', '600', '700', '800', '900'],
-    subsets: ["latin"],
-    variable: "--font-orbitron",
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
@@ -27,7 +25,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${rajdhani.variable} ${orbitron.variable} antialiased bg-iron-dark text-white`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        suppressHydrationWarning
       >
         {children}
       </body>

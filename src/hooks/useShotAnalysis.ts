@@ -1,40 +1,77 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { Point, calculateAngle } from '@/lib/poseUtils';
-import { audioCoach } from '@/lib/audioFeedback';
 
 type ShotState = 'IDLE' | 'SET' | 'RELEASE';
-
-interface AnalysisResult {
-    angle: number;
-    state: ShotState;
-    feedback: string;
-    isPerfect: boolean;
-}
+type TrackingStatus = 'SEARCHING' | 'TRACKING' | 'LOCKED';
 
 export function useShotAnalysis() {
     const [state, setState] = useState<ShotState>('IDLE');
-    const [feedback, setFeedback] = useState<string>("Align Camera");
+    const [feedback, setFeedback] = useState<string>("Get Ready");
     const [angle, setAngle] = useState<number>(0);
     const [isPerfect, setIsPerfect] = useState<boolean>(false);
+    const [status, setStatus] = useState<TrackingStatus>('SEARCHING');
+    const [guidance, setGuidance] = useState<string>("");
 
     const analyzeFrame = useCallback((landmarks: Point[]) => {
         if (!landmarks || landmarks.length < 33) return;
 
-        // Right side indices
-        const shoulder = landmarks[12];
-        const elbow = landmarks[14];
-        const wrist = landmarks[16];
-        const hip = landmarks[24];
+        // Visibility check helper - very low threshold
+        const vis = (p: Point) => p?.visibility ?? 0;
+        const isVis = (p: Point) => vis(p) > 0.2;
 
-        // 1. Calculate Elbow Angle
+        // Right arm landmarks
+        const rShoulder = landmarks[12];
+        const rElbow = landmarks[14];
+        const rWrist = landmarks[16];
+
+        // Left arm landmarks
+        const lShoulder = landmarks[11];
+        const lElbow = landmarks[13];
+        const lWrist = landmarks[15];
+
+        // Hip for raised arm detection
+        const rHip = landmarks[24];
+        const lHip = landmarks[23];
+
+        // Determine which arm to use based on visibility
+        const rightVis = (vis(rShoulder) + vis(rElbow) + vis(rWrist)) / 3;
+        const leftVis = (vis(lShoulder) + vis(lElbow) + vis(lWrist)) / 3;
+
+        const useRight = rightVis >= leftVis;
+        const shoulder = useRight ? rShoulder : lShoulder;
+        const elbow = useRight ? rElbow : lElbow;
+        const wrist = useRight ? rWrist : lWrist;
+        const hip = useRight ? rHip : lHip;
+
+        // Debug log
+        console.log(`[Tracking] Using ${useRight ? 'RIGHT' : 'LEFT'} arm. Vis: ${(useRight ? rightVis : leftVis).toFixed(2)}`);
+
+        // Visibility check
+        if (!isVis(elbow) || !isVis(shoulder)) {
+            setStatus('SEARCHING');
+            setFeedback("Position Yourself");
+            setAngle(0);
+
+            // Provide directional guidance
+            if (rightVis < 0.1 && leftVis < 0.1) {
+                setGuidance("Step back to show upper body");
+            } else if (rightVis < leftVis) {
+                setGuidance("Move right or turn slightly");
+            } else {
+                setGuidance("Move left or turn slightly");
+            }
+            return;
+        }
+
+        setGuidance("");
+        setStatus('TRACKING');
+
+        // Calculate Elbow Angle
         const elbowAngle = calculateAngle(shoulder, elbow, wrist);
         setAngle(Math.round(elbowAngle));
 
-        // 2. Simple State Machine
-        // SET: Elbow is raised (y < hip.y) AND angle is roughly 90 (70-110)
-        // RELEASE: Elbow extends (> 140)
-
-        const isArmRaised = elbow.y < hip.y; // Y is inverted in canvas usually? 0 is top. Yes.
+        // Check if arm is raised
+        const isArmRaised = elbow.y < hip.y;
 
         if (!isArmRaised) {
             setState('IDLE');
@@ -43,32 +80,30 @@ export function useShotAnalysis() {
             return;
         }
 
-        // Determine State
+        setStatus('LOCKED');
+
+        // Form Analysis State Machine
         if (elbowAngle < 120) {
             setState('SET');
 
-            // Analyze Form in SET position
             if (elbowAngle > 110) {
                 setFeedback("TUCK ELBOW");
-                audioCoach.speak("Tuck your elbow");
                 setIsPerfect(false);
             } else if (elbowAngle < 70) {
                 setFeedback("TOO TIGHT");
-                audioCoach.speak("Too tight");
                 setIsPerfect(false);
             } else {
-                setFeedback("PERFECT SET");
+                setFeedback("PERFECT FORM");
                 setIsPerfect(true);
             }
         } else if (elbowAngle > 140) {
-            // Extension phase
             if (state === 'SET') {
                 setState('RELEASE');
-                audioCoach.speak("Nice release");
-                setFeedback("RELEASED");
+                setFeedback("NICE RELEASE!");
+                setIsPerfect(true);
             }
         }
     }, [state]);
 
-    return { analyzeFrame, angle, state, feedback, isPerfect };
+    return { analyzeFrame, angle, state, feedback, isPerfect, status, guidance };
 }
