@@ -29,7 +29,7 @@ export function LiveKitFeed({ onVideoReady, onStreamReady }: LiveKitFeedProps) {
                     if (videoRef.current) {
                         videoTrack.attach(videoRef.current);
 
-                        // Wait for video to actually start playing before notifying parent
+                        // Wait for video to actually start playing
                         videoRef.current.onloadeddata = () => {
                             console.log("[LiveKitFeed] Video loaded and playing");
                             if (onVideoReady && videoRef.current) {

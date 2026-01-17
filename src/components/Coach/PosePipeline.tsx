@@ -1,19 +1,14 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import Script from "next/script";
 import { LiveKitFeed } from "@/components/Coach/LiveKitFeed";
 import { drawSkeleton } from "@/lib/poseUtils";
 import { useShotAnalysis } from "@/hooks/useShotAnalysis";
 import { ProCard, ProBadge } from "@/components/UI/ProComponents";
 import { Activity } from "lucide-react";
-
-interface MPResults {
-    poseLandmarks: { x: number; y: number; z: number; visibility: number }[];
-    poseWorldLandmarks?: { x: number; y: number; z: number; visibility: number }[];
-}
-
-import { PhysicsResult } from '@/lib/physics';
+import { moveNet, mapMoveNetToMediaPipe } from "@/lib/detector";
+import { PhysicsResult } from "@/lib/physics";
+import { SignalGraph } from "@/components/UI/ScientificGraphs";
 
 interface PosePipelineProps {
     mode: 'SCAN' | 'TRAIN';
@@ -24,17 +19,19 @@ interface PosePipelineProps {
 }
 
 export function PosePipeline({ mode, onShot, onLog, onStreamReady, onLandmarksUpdate }: PosePipelineProps) {
-    const [scriptLoaded, setScriptLoaded] = useState(false);
     const [videoReady, setVideoReady] = useState(false);
+
+    // UI Update State (throttled)
+    const [displayAngle, setDisplayAngle] = useState(0);
+    const [displayFeedback, setDisplayFeedback] = useState("");
+    const [displayStatus, setDisplayStatus] = useState("SEARCHING");
+    const [displayGuidance, setDisplayGuidance] = useState("");
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const requestRef = useRef<number>(0);
-    const poseRef = useRef<any>(null);
-    const loopStartedRef = useRef(false);
 
-    const { analyzeFrame, angle, state, feedback, isPerfect, status, guidance, lastPhysics } = useShotAnalysis();
-    const prevState = useRef(state);
+    const { analyzeFrame, angle, state, feedback, isPerfect, status, guidance, lastPhysics, metrics } = useShotAnalysis();
 
     // Stable Log Reference
     const onLogRef = useRef(onLog);
@@ -45,166 +42,139 @@ export function PosePipeline({ mode, onShot, onLog, onStreamReady, onLandmarksUp
         if (onLogRef.current) onLogRef.current(msg, level);
     }, []);
 
-    // Shot Event Listener
+    // Sync UI with hook state (Throttled update separate from tracking loop)
     useEffect(() => {
-        if (onShot && prevState.current !== 'RELEASE' && state === 'RELEASE') {
-            onShot(isPerfect, angle, feedback, lastPhysics);
+        setDisplayAngle(angle);
+        setDisplayFeedback(feedback);
+        setDisplayStatus(status);
+        setDisplayGuidance(guidance);
+    }, [angle, feedback, status, guidance]);
 
+    // Shot Event Listener - FIXED: Prevent multiple fires per shot
+    const lastShotStateRef = useRef<string>('');
+    useEffect(() => {
+        // Only fire once per RELEASE state transition
+        if (onShot && state === 'RELEASE' && lastShotStateRef.current !== 'RELEASE') {
+            lastShotStateRef.current = 'RELEASE';
+            onShot(isPerfect, angle, feedback, lastPhysics);
             if (lastPhysics) {
                 log(`Physics: ${lastPhysics.releaseVelocity.toFixed(1)}m/s @ ${lastPhysics.releaseAngle}°`, 'success');
             }
             log(`Shot Detected: ${isPerfect ? 'Perfect' : 'Flaw'}`, isPerfect ? 'success' : 'warning');
         }
-        prevState.current = state;
+        // Reset when state leaves RELEASE (back to IDLE or SET)
+        if (state !== 'RELEASE') {
+            lastShotStateRef.current = state;
+        }
     }, [state, isPerfect, onShot, log, lastPhysics, angle, feedback]);
 
-    // MediaPipe Results Handler
-    const onResults = useCallback((results: MPResults) => {
-        console.log("[MediaPipe] onResults - Landmarks:", results.poseLandmarks?.length || 0);
-
-        if (!results.poseLandmarks) return;
-
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-
-        const points = results.poseLandmarks.map(l => ({ x: l.x, y: l.y, visibility: l.visibility }));
-        drawSkeleton(ctx, points);
-        analyzeFrame(points);
-
-        // Pass landmarks for physics calculations
-        if (onLandmarksUpdate && points.length >= 17) {
-            onLandmarksUpdate(
-                { x: points[12].x, y: points[12].y }, // Right shoulder
-                { x: points[16].x, y: points[16].y }  // Right wrist
-            );
-        }
-
-        ctx.restore();
-    }, [analyzeFrame, onLandmarksUpdate]);
-
-    // Tracking Loop
-    const startLoop = useCallback(() => {
-        if (loopStartedRef.current) {
-            console.log("[Loop] Already started, skipping");
-            return;
-        }
-        loopStartedRef.current = true;
-        log("Starting tracking loop...", 'info');
-
-        const loop = async () => {
-            const video = videoRef.current;
-            const pose = poseRef.current;
-
-            if (!video || video.paused || video.ended || !pose) {
-                requestRef.current = requestAnimationFrame(loop);
-                return;
-            }
-
-            if (video.readyState >= 2 && video.videoWidth > 0) {
-                const canvas = canvasRef.current;
-                if (canvas && canvas.width !== video.videoWidth) {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    console.log("[Loop] Canvas synced:", video.videoWidth, "x", video.videoHeight);
-                }
-
-                try {
-                    await pose.send({ image: video });
-                } catch (e) {
-                    console.error("[Loop] send failed:", e);
-                }
-            }
-
-            requestRef.current = requestAnimationFrame(loop);
-        };
-
-        loop();
+    // Initialize Detector
+    useEffect(() => {
+        moveNet.initialize().then(() => log("MoveNet Ready", 'success'));
     }, [log]);
 
-    // Initialize MediaPipe when script loads - WITH GUARD TO PREVENT RE-INIT
-    const poseInitializedRef = useRef(false);
+    // Helper: Pass landmarks for physics if available
+    const updatePhysicsLandmarks = (landmarks: any[]) => {
+        if (!onLandmarksUpdate) return;
+        // Check standard BP indices (12/16 right, 11/15 left)
+        const getPt = (idx: number) => landmarks[idx] && landmarks[idx].visibility > 0.3 ? landmarks[idx] : null;
 
-    useEffect(() => {
-        if (!scriptLoaded || typeof window === 'undefined' || !(window as any).Pose) return;
+        let shoulder = getPt(12);
+        let wrist = getPt(16);
 
-        // CRITICAL: Prevent re-initialization
-        if (poseInitializedRef.current || poseRef.current) {
-            console.log("[MediaPipe] Already initialized, skipping");
+        // Fallback to left
+        if (!shoulder || !wrist) {
+            shoulder = getPt(11);
+            wrist = getPt(15);
+        }
+
+        if (shoulder && wrist) {
+            onLandmarksUpdate(
+                { x: shoulder.x, y: shoulder.y },
+                { x: wrist.x, y: wrist.y }
+            );
+        }
+    };
+
+    // Main Loop
+    const loop = async () => {
+        if (!videoRef.current || !canvasRef.current || !videoReady) {
+            requestRef.current = requestAnimationFrame(loop);
             return;
         }
 
-        poseInitializedRef.current = true;
-        log("Initializing MediaPipe...", 'info');
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
 
-        const Pose = (window as any).Pose;
-        const pose = new Pose({
-            locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
-        });
-
-        pose.setOptions({
-            modelComplexity: 0, // Lite model for speed + Smoothing handles jitter
-            smoothLandmarks: true,
-            enableSegmentation: false,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5,
-        });
-
-        pose.onResults(onResults);
-        poseRef.current = pose;
-        log("MediaPipe initialized.", 'success');
-
-        return () => {
-            pose.close();
-            poseRef.current = null;
-            poseInitializedRef.current = false;
-        };
-    }, [scriptLoaded, onResults, log]);
-
-    // Start loop when BOTH video AND pose are ready
-    useEffect(() => {
-        console.log("[Sync] videoReady:", videoReady, "poseRef:", !!poseRef.current);
-        if (videoReady && poseRef.current) {
-            startLoop();
+        if (video.videoWidth === 0 || video.videoHeight === 0) {
+            requestRef.current = requestAnimationFrame(loop);
+            return;
         }
-    }, [videoReady, scriptLoaded, startLoop]);
 
-    // Cleanup
+        // 1. Resize Canvas
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+        }
+
+        // 2. Estimate Pose
+        const pose = await moveNet.estimatePoses(video);
+
+        // 3. Process Pose
+        if (pose && pose.keypoints) {
+            // Map to BP format for analysis
+            const landmarks = mapMoveNetToMediaPipe(pose.keypoints, video.videoWidth, video.videoHeight);
+
+            // Run Analysis
+            analyzeFrame(landmarks);
+            updatePhysicsLandmarks(landmarks);
+
+            // Draw
+            if (ctx) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                // Mirror mapping for drawing
+                ctx.save();
+                ctx.scale(-1, 1);
+                ctx.translate(-canvas.width, 0);
+                drawSkeleton(ctx, landmarks); // Removed width/height args as drawSkeleton might not take them OR I should check the def
+                ctx.restore();
+            }
+        } else if (ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        requestRef.current = requestAnimationFrame(loop);
+    };
+
+    // Start Loop when video ready
     useEffect(() => {
+        if (videoReady) {
+            requestRef.current = requestAnimationFrame(loop);
+        }
         return () => {
-            cancelAnimationFrame(requestRef.current);
-            loopStartedRef.current = false;
+            if (requestRef.current) cancelAnimationFrame(requestRef.current);
         };
-    }, []);
+    }, [videoReady, analyzeFrame]);
 
-    const isSearching = status === 'SEARCHING';
-    const isLocked = status === 'LOCKED';
+    // Metrics History for Graphs
+    const [velHistory, setVelHistory] = useState<number[]>(new Array(20).fill(0));
+    const [accHistory, setAccHistory] = useState<number[]>(new Array(20).fill(0));
+
+    // Update Graphs
+    useEffect(() => {
+        if (!metrics) return;
+        setVelHistory(prev => [...prev.slice(1), metrics.velocity * 10]); // Scale to approx m/s
+        setAccHistory(prev => [...prev.slice(1), Math.abs(metrics.acceleration * 10)]);
+    }, [metrics]);
 
     return (
-        <div className="relative w-full h-full font-geist-sans">
-            <Script
-                src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"
-                strategy="afterInteractive"
-                onLoad={() => {
-                    console.log("[Script] MediaPipe downloaded");
-                    setScriptLoaded(true);
-                    log("MediaPipe Script Downloaded", 'success');
-                }}
-                onError={() => log("Failed to load MediaPipe script", 'error')}
-            />
-
+        <div className="relative w-full h-full bg-black rounded-xl overflow-hidden shadow-2xl border border-white/10">
             <LiveKitFeed
                 onVideoReady={(v) => {
-                    console.log("[Feed] Video ready callback");
+                    log("Camera Connected", 'success');
                     videoRef.current = v;
                     setVideoReady(true);
-                    log("LiveKit Video Ready", 'success');
                 }}
                 onStreamReady={onStreamReady}
             />
@@ -217,55 +187,92 @@ export function PosePipeline({ mode, onShot, onLog, onStreamReady, onLandmarksUp
             {/* PREMIUM AR OVERLAY */}
             {mode === 'TRAIN' && (
                 <>
-                    {/* Status & Guidance (Centered below top HUD) */}
-                    {isSearching && guidance && (
-                        <div className="absolute top-32 left-1/2 transform -translate-x-1/2 z-30">
-                            <div className="bg-black/60 backdrop-blur-md px-6 py-3 rounded-full border border-white/10">
-                                <span className="text-white font-medium">{guidance}</span>
+                    {/* Status & Guidance */}
+                    <div className="absolute top-24 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 w-full max-w-sm px-4">
+                        {status === 'SEARCHING' ? (
+                            <ProCard className="bg-black/60 backdrop-blur-md border-white/10 py-2 px-4 animate-pulse">
+                                <div className="flex items-center gap-2 text-yellow-400">
+                                    <Activity className="w-4 h-4" />
+                                    <span className="font-bold">LOOKING FOR PLAYER</span>
+                                </div>
+                            </ProCard>
+                        ) : (
+
+                            <div className="flex flex-col items-center gap-4 animate-in slide-in-from-top-4 fade-in duration-300">
+                                {/* Dynamic Status Bar */}
+                                <div className="flex items-center gap-3 px-4 py-2 bg-black/40 backdrop-blur-xl border border-white/10 rounded-full shadow-2xl">
+                                    <div className="w-2 h-2 rounded-full bg-pro-green animate-pulse" />
+                                    <span className="text-xs font-bold text-white tracking-widest uppercase">
+                                        SYSTEM LOCKED
+                                    </span>
+                                    <div className="w-px h-3 bg-white/20" />
+                                    <span className="text-xs font-mono text-pro-green">
+                                        {((metrics?.velocity || 0) * 10).toFixed(1)} m/s
+                                    </span>
+                                </div>
+
+                                {/* Main HUD - Circular Layout Idea (Simplified for CSS) */}
+                                <div className="relative flex flex-col items-center justify-center">
+                                    {/* Angle Readout */}
+                                    <div className="flex items-start gap-1">
+                                        <span className={`text-7xl font-black tracking-tighter ${angle >= 85 && angle <= 95 ? 'text-pro-green drop-shadow-[0_0_20px_rgba(0,230,118,0.5)]' : 'text-white'
+                                            }`}>
+                                            {angle}
+                                        </span>
+                                        <span className="text-lg font-bold text-white/40 mt-2">°</span>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-white/30 tracking-[0.2em] uppercase">Elbow Flexion</span>
+
+                                    {/* Minimalist Bar below */}
+                                    <div className="mt-4 w-32 h-1 bg-white/10 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full transition-all duration-300 ${angle >= 85 && angle <= 95 ? 'bg-pro-green' : 'bg-white'
+                                                }`}
+                                            style={{ width: `${Math.min((angle / 180) * 100, 100)}%` }}
+                                        />
+                                    </div>
+                                </div>
                             </div>
+                        )}
+                    </div>
+
+                    {/* Side Analytics Panel */}
+                    <div className="absolute top-28 right-3 flex flex-col gap-2 opacity-60 hover:opacity-100 transition-opacity">
+                        <SignalGraph
+                            data={velHistory}
+                            max={3}
+                            color="#00F0FF"
+                            label="VEL"
+                            unit="u/s"
+                        />
+                        <SignalGraph
+                            data={accHistory}
+                            max={8}
+                            color="#F0FF00"
+                            label="ACC"
+                            unit="G"
+                        />
+                    </div>
+
+                    {/* Feedback Toast */}
+                    {displayFeedback && (
+                        <div className={`
+                                px-6 py-3 rounded-full font-black text-lg tracking-wider shadow-2xl backdrop-blur-xl border
+                                animate-in zoom-in-50 slide-in-from-bottom-4 duration-300
+                                ${displayFeedback.includes("PERFECT") || displayFeedback.includes("SPLASH")
+                                ? "bg-pro-green/20 border-pro-green text-pro-green shadow-[0_0_20px_rgba(0,230,118,0.3)]"
+                                : "bg-red-500/20 border-red-500 text-red-200"}
+                            `}>
+                            {displayFeedback}
                         </div>
                     )}
 
-                    {/* 2. Main HUD (Bottom Right) */}
-                    <div className="absolute bottom-8 right-8 z-30 pointer-events-none">
-                        <div className="relative group">
-                            {/* Glow Effect */}
-                            <div className={`absolute -inset-1 blur-xl opacity-20 transition-all duration-500 ${isPerfect ? 'bg-pro-green' : 'bg-pro-blue'}`}></div>
-
-                            <div className="relative backdrop-blur-2xl bg-black/60 border border-white/10 p-6 rounded-[2rem] min-w-[240px] shadow-2xl">
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="text-[10px] uppercase text-white/40 font-bold tracking-widest">Elbow Angle</span>
-                                    <Activity className="w-4 h-4 text-white/40" />
-                                </div>
-
-                                <div className="flex items-baseline gap-1">
-                                    <span className={`text-7xl font-black tracking-tighter tabular-nums transition-colors duration-200 ${isSearching ? 'text-white/20' : 'text-white'}`}>
-                                        {angle}
-                                    </span>
-                                    <span className="text-xl text-white/40 font-light">°</span>
-                                </div>
-
-                                <div className="h-1.5 w-full bg-white/10 rounded-full mt-4 overflow-hidden">
-                                    <div
-                                        className={`h-full transition-all duration-300 ease-out ${isPerfect ? 'bg-pro-green shadow-[0_0_10px_#00E676]' : 'bg-pro-blue'}`}
-                                        style={{ width: `${Math.min((angle / 180) * 100, 100)}%` }}
-                                    ></div>
-                                </div>
-
-                                <div className="mt-4 flex items-center justify-between">
-                                    <span className={`text-sm font-bold tracking-wide uppercase ${isPerfect ? 'text-pro-green' : 'text-white/80'}`}>
-                                        {feedback}
-                                    </span>
-                                    {isPerfect && <div className="w-2 h-2 bg-pro-green rounded-full shadow-[0_0_8px_#00E676]"></div>}
-                                </div>
-                            </div>
+                    {/* Guidance Toast */}
+                    {displayGuidance && displayStatus === 'SEARCHING' && (
+                        <div className="px-4 py-2 bg-black/50 border border-white/10 rounded-lg text-white/70 text-sm font-medium backdrop-blur-md">
+                            {displayGuidance}
                         </div>
-                    </div>
-
-                    {/* 3. Guide Lines (Optional AR Elements) */}
-                    <div className="absolute inset-0 pointer-events-none pb-20 opacity-20">
-                        <div className="w-full h-full border-[20px] border-white/5 rounded-[3rem]"></div>
-                    </div>
+                    )}
                 </>
             )}
         </div>

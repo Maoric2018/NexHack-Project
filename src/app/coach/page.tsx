@@ -120,11 +120,19 @@ export default function CoachPage() {
         addLog(`Challenge Complete! Grade: ${grade}`, 'success');
     };
 
-    // Overshoot Scan
     const handleScan = async () => {
         setIsScanning(true);
         setScanResult(null);
         addLog("Initializing Overshoot...", 'info');
+
+        // Safety Timeout (5s max)
+        const timeout = setTimeout(() => {
+            if (!scanResult) {
+                addLog("Overshoot timeout - auto-clearing", 'warning');
+                setScanResult("Environment assumed safe (Timeout).");
+                setIsScanning(false);
+            }
+        }, 5000);
 
         try {
             const vision = new RealtimeVision({
@@ -133,14 +141,17 @@ export default function CoachPage() {
                 prompt: 'Describe the safety of this area for playing basketball in one short sentence.',
                 source: { type: 'camera', cameraFacing: 'environment' },
                 onResult: (result) => {
+                    clearTimeout(timeout);
                     setScanResult(result.result);
                     setIsScanning(false);
                     vision.stop();
                 }
             });
             await vision.start();
-        } catch {
-            setScanResult("Environment cleared for training.");
+        } catch (e) {
+            clearTimeout(timeout);
+            console.error("Overshoot Error:", e);
+            setScanResult("Environment cleared (Offline Mode).");
             setIsScanning(false);
         }
     };
