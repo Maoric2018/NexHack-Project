@@ -103,12 +103,13 @@ export default function CoachPage() {
                 if (newStreak > bestStreak) setBestStreak(newStreak);
                 return newStreak;
             });
-
-            if (perfectShots + 1 >= target) {
-                completeChallenge();
-            }
         } else {
             setStreak(0);
+        }
+
+        // NEW: End session after X TOTAL shots (not just makes)
+        if (totalShots + 1 >= target) {
+            completeChallenge();
         }
     };
 
@@ -400,22 +401,30 @@ export default function CoachPage() {
                                         <button
                                             key={shot.id}
                                             onClick={() => setSelectedShotId(shot.id)}
-                                            className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between group ${selectedShotId === shot.id
-                                                ? 'bg-pro-blue text-white shadow-lg shadow-pro-blue/20'
-                                                : 'bg-black/20 text-gray-400 hover:bg-white/10 hover:text-white'
+                                            className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between group border ${selectedShotId === shot.id
+                                                    ? 'bg-pro-blue/20 border-pro-blue text-white shadow-lg shadow-pro-blue/20'
+                                                    : shot.isPerfect
+                                                        ? 'bg-pro-green/5 border-pro-green/30 text-pro-green hover:bg-pro-green/10'
+                                                        : 'bg-red-500/5 border-red-500/20 text-red-400 hover:bg-red-500/10'
                                                 }`}
                                         >
                                             <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${shot.isPerfect ? 'bg-pro-green text-black' : 'bg-red-500/20 text-red-500'
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${shot.isPerfect
+                                                        ? 'bg-pro-green text-black shadow-[0_0_12px_rgba(0,230,118,0.5)]'
+                                                        : 'bg-red-500/30 text-red-300'
                                                     }`}>
-                                                    {idx + 1}
+                                                    {shot.isPerfect ? '✓' : '✗'}
                                                 </div>
                                                 <div>
-                                                    <div className="text-sm font-bold">{shot.isPerfect ? 'Swish' : 'Miss'}</div>
-                                                    <div className="text-[10px] opacity-60 font-mono">{shot.elbowAngle}° Angle</div>
+                                                    <div className={`text-sm font-bold ${shot.isPerfect ? 'text-pro-green' : 'text-red-400'}`}>
+                                                        {shot.isPerfect ? '🟢 SWISH' : '🔴 MISS'}
+                                                    </div>
+                                                    <div className="text-[10px] opacity-60 font-mono text-gray-400">
+                                                        Shot #{idx + 1} • {Math.round(shot.elbowAngle)}°
+                                                    </div>
                                                 </div>
                                             </div>
-                                            {selectedShotId === shot.id && <Play className="w-3 h-3 fill-current" />}
+                                            {selectedShotId === shot.id && <Play className="w-4 h-4 fill-current text-pro-blue" />}
                                         </button>
                                     ))}
                                 </div>
@@ -450,19 +459,19 @@ export default function CoachPage() {
                                             return (
                                                 <>
                                                     <div>
-                                                        <div className="text-xl font-mono text-pro-green">{p.releaseAngle}°</div>
+                                                        <div className="text-xl font-mono text-pro-green">{Math.round(p.releaseAngle)}°</div>
                                                         <div className="text-[10px] text-gray-500 uppercase">Release Angle</div>
                                                     </div>
                                                     <div>
-                                                        <div className="text-xl font-mono text-pro-blue">{p.releaseVelocity.toFixed(1)} m/s</div>
+                                                        <div className="text-xl font-mono text-pro-blue">{Math.round(p.releaseVelocity * 10) / 10} m/s</div>
                                                         <div className="text-[10px] text-gray-500 uppercase">Velocity</div>
                                                     </div>
                                                     <div>
-                                                        <div className="text-xl font-mono text-orange-400">{p.arcHeight.toFixed(2)}m</div>
+                                                        <div className="text-xl font-mono text-orange-400">{Math.round(p.arcHeight * 100) / 100}m</div>
                                                         <div className="text-[10px] text-gray-500 uppercase">Arc Height</div>
                                                     </div>
                                                     <div>
-                                                        <div className="text-xl font-mono text-white">{p.timeOfFlight.toFixed(2)}s</div>
+                                                        <div className="text-xl font-mono text-white">{Math.round(p.timeOfFlight * 100) / 100}s</div>
                                                         <div className="text-[10px] text-gray-500 uppercase">Flight Time</div>
                                                     </div>
                                                 </>

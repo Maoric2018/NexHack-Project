@@ -98,6 +98,9 @@ function HologramPlayer({ motionData, isPlaying, frameIndex }: { motionData?: an
         );
     };
 
+    // Get wrist position for basketball
+    const wristPos = getPos(16) || getPos(15); // Right wrist, fallback to left
+
     return (
         <group ref={groupRef} position={[0, 0, 2]}>
             {/* JOINTS */}
@@ -132,7 +135,56 @@ function HologramPlayer({ motionData, isPlaying, frameIndex }: { motionData?: an
                     </mesh>
                 )
             })}
+
+            {/* BASKETBALL (Follows Wrist) */}
+            {wristPos && (
+                <mesh position={wristPos}>
+                    <sphereGeometry args={[0.12, 24, 24]} />
+                    <meshStandardMaterial color="#FF6B00" roughness={0.6} />
+                </mesh>
+            )}
         </group>
+    );
+}
+
+// ------------------------------------------------------------------
+// ANIMATED SHOOTING BALL (Parabolic Arc)
+// ------------------------------------------------------------------
+function ShootingBall({ isPlaying, frameIndex, totalFrames }: { isPlaying: boolean, frameIndex: number, totalFrames: number }) {
+    const meshRef = useRef<THREE.Mesh>(null);
+
+    // Calculate ball position along parabolic trajectory
+    const progress = totalFrames > 0 ? (frameIndex / totalFrames) : 0;
+
+    // Start position (player's hand) -> End position (hoop)
+    const startX = 0, startY = 2.5, startZ = 2;
+    const endX = 0, endY = 3.05, endZ = 6.5; // Hoop position
+
+    // Parabolic arc
+    const arcHeight = 2.5;
+    const t = Math.min(progress * 2, 1); // Ball travels in first half of clip
+
+    const x = startX + (endX - startX) * t;
+    const z = startZ + (endZ - startZ) * t;
+    // Parabolic y: starts at startY, peaks at startY + arcHeight, ends at endY
+    const y = startY + (endY - startY) * t + arcHeight * Math.sin(t * Math.PI);
+
+    // Rotation: ball spins
+    const rotX = frameIndex * 0.3;
+    const rotZ = frameIndex * 0.2;
+
+    if (!isPlaying || t >= 1) return null;
+
+    return (
+        <mesh ref={meshRef} position={[x, y, z]} rotation={[rotX, 0, rotZ]}>
+            <sphereGeometry args={[0.12, 24, 24]} />
+            <meshStandardMaterial
+                color="#FF6B00"
+                roughness={0.5}
+                emissive="#FF4500"
+                emissiveIntensity={0.3}
+            />
+        </mesh>
     );
 }
 
@@ -205,6 +257,11 @@ export function CourtScene({ physics, motionData, isPlaying }: CourtSceneProps) 
                 <group position={[0, -1, 0]}>
                     <CyberCourt />
                     <HologramPlayer motionData={motionData} isPlaying={isPlaying} frameIndex={frameIndex} />
+                    <ShootingBall
+                        isPlaying={isPlaying}
+                        frameIndex={frameIndex}
+                        totalFrames={motionData?.length || 30}
+                    />
                 </group>
 
                 <OrbitControls
