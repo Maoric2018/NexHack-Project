@@ -12,7 +12,7 @@ import { SignalGraph } from "@/components/UI/ScientificGraphs";
 
 interface PosePipelineProps {
     mode: 'SCAN' | 'TRAIN';
-    onShot?: (isPerfect: boolean, elbowAngle: number, feedback: string, physics?: PhysicsResult) => void;
+    onShot?: (isPerfect: boolean, elbowAngle: number, feedback: string, physics?: PhysicsResult, motionData?: any[], timestamp?: number) => void;
     onLog?: (msg: string, level: 'info' | 'success' | 'warning' | 'error') => void;
     onStreamReady?: (stream: MediaStream) => void;
     onLandmarksUpdate?: (shoulder: { x: number; y: number }, wrist: { x: number; y: number }) => void;
@@ -30,6 +30,7 @@ export function PosePipeline({ mode, onShot, onLog, onStreamReady, onLandmarksUp
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const requestRef = useRef<number>(0);
+    const lastShotMotionRef = useRef<any[] | null>(null);
 
     const { analyzeFrame, angle, state, feedback, isPerfect, status, guidance, lastPhysics, metrics } = useShotAnalysis();
 
@@ -56,7 +57,21 @@ export function PosePipeline({ mode, onShot, onLog, onStreamReady, onLandmarksUp
         // Only fire once per RELEASE state transition
         if (onShot && state === 'RELEASE' && lastShotStateRef.current !== 'RELEASE') {
             lastShotStateRef.current = 'RELEASE';
-            onShot(isPerfect, angle, feedback, lastPhysics);
+            lastShotStateRef.current = 'RELEASE';
+
+            // Calculate relative timestamp (video time)
+            const timestamp = videoRef.current ? videoRef.current.currentTime : 0;
+
+            if (onShot) {
+                // Pass motion data (landmarks history)
+                // We cast physics to include motionData which is a slight hack but efficient
+                // Actually, let's just piggyback on physics or add a new arg? 
+                // The interface expects (isPerfect, angle, feedback, physics).
+                // Let's attach motionData to physics object for transport if needed, OR update the prop signature.
+                // Updating prop signature in next step. For now, assuming prop update.
+                onShot(isPerfect, angle, feedback, lastPhysics, lastShotMotionRef.current || [], timestamp);
+            }
+
             if (lastPhysics) {
                 log(`Physics: ${lastPhysics.releaseVelocity.toFixed(1)}m/s @ ${lastPhysics.releaseAngle}°`, 'success');
             }
@@ -127,7 +142,15 @@ export function PosePipeline({ mode, onShot, onLog, onStreamReady, onLandmarksUp
             const landmarks = mapMoveNetToMediaPipe(pose.keypoints, video.videoWidth, video.videoHeight);
 
             // Run Analysis
-            analyzeFrame(landmarks);
+            // Run Analysis
+            // Note: analyzeFrame now returns an object if a shot was detected
+            const result = analyzeFrame(landmarks);
+
+            // If shot detected, store motion data temporarily so effect can pick it up
+            if (result && result.shotMotion) {
+                lastShotMotionRef.current = result.shotMotion;
+            }
+
             updatePhysicsLandmarks(landmarks);
 
             // Draw

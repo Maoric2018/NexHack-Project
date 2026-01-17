@@ -7,9 +7,10 @@ interface SplitViewProps {
     videoBlob?: Blob;
     children: React.ReactNode; // 3D scene
     onPlayStateChange?: (playing: boolean) => void;
+    clipRange?: { start: number; end: number } | null;
 }
 
-export function SplitView({ videoBlob, children, onPlayStateChange }: SplitViewProps) {
+export function SplitView({ videoBlob, children, onPlayStateChange, clipRange }: SplitViewProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -51,16 +52,34 @@ export function SplitView({ videoBlob, children, onPlayStateChange }: SplitViewP
         }
     };
 
-    // Update timeline
+    // Clip Range for Virtual Clips
     useEffect(() => {
         const video = videoRef.current;
-        if (!video) return;
+        if (!video || !clipRange) return;
 
-        const handleTimeUpdate = () => setCurrentTime(video.currentTime);
+        const handleTimeUpdate = () => {
+            setCurrentTime(video.currentTime);
+            // Loop logic
+            if (video.currentTime >= clipRange.end) {
+                video.currentTime = clipRange.start;
+                video.play();
+            }
+        };
+
+        // Initial seek when clip changes
+        if (Math.abs(video.currentTime - clipRange.start) > 0.5) {
+            video.currentTime = clipRange.start;
+            video.play();
+            setIsPlaying(true);
+            onPlayStateChange?.(true);
+        }
+
         const handleLoadedMetadata = () => setDuration(video.duration);
         const handleEnded = () => {
-            setIsPlaying(false);
-            onPlayStateChange?.(false);
+            if (!clipRange) {
+                setIsPlaying(false);
+                onPlayStateChange?.(false);
+            }
         };
 
         video.addEventListener('timeupdate', handleTimeUpdate);
@@ -72,7 +91,7 @@ export function SplitView({ videoBlob, children, onPlayStateChange }: SplitViewP
             video.removeEventListener('loadedmetadata', handleLoadedMetadata);
             video.removeEventListener('ended', handleEnded);
         };
-    }, [onPlayStateChange, videoUrl]);
+    }, [onPlayStateChange, videoUrl, clipRange]);
 
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 

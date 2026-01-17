@@ -7,8 +7,10 @@ export interface ShotRecord {
     elbowAngle: number;
     isPerfect: boolean;
     feedback: string;
-    // Pose landmarks at release (normalized 0-1)
-    landmarks?: { x: number; y: number; z?: number }[];
+    // Video Sync
+    videoTimestamp: number; // Time in seconds from session start
+    // Motion Capture Data (Array of frames, each frame has 33 landmarks)
+    motionData?: { x: number; y: number; z?: number; visibility?: number }[][];
     trajectory?: PhysicsResult;
 }
 

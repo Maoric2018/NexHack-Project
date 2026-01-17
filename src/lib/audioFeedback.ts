@@ -36,10 +36,16 @@ class AudioCoach {
             "Use your legs.",
             "Too soft, push it.",
             "Weak release."
+        ],
+        goodShot: [
+            "Nice extension.",
+            "Good follow through.",
+            "Solid mechanics.",
+            "Looking smooth."
         ]
     };
 
-    speak(type: 'perfect' | 'elbowTuck' | 'tooTight' | 'arc' | 'power' | 'custom', customText?: string) {
+    speak(type: 'perfect' | 'elbowTuck' | 'tooTight' | 'arc' | 'power' | 'goodShot' | 'custom', customText?: string) {
         if (this.isMuted) return;
 
         const now = Date.now();

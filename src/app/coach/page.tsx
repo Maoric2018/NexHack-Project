@@ -58,6 +58,7 @@ export default function CoachPage() {
     const [sessionGrade, setSessionGrade] = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'F'>('C');
     const [isReplayPlaying, setIsReplayPlaying] = useState(false);
     const [physics, setPhysics] = useState<PhysicsResult | undefined>(undefined);
+    const [selectedShotId, setSelectedShotId] = useState<number | null>(null);
 
     // Video Recording
     const [videoBlob, setVideoBlob] = useState<Blob | undefined>(undefined);
@@ -75,15 +76,17 @@ export default function CoachPage() {
     const avgAngle = totalShots > 0 ? Math.round(shots.reduce((s, shot) => s + shot.elbowAngle, 0) / totalShots) : 0;
     const angleStdDev = totalShots > 0 ? standardDeviation(shots.map(s => s.elbowAngle)) : 0;
 
-    // Handle Shot from PosePipeline - NOW WITH PHYSICS
-    const handleShot = (isPerfect: boolean, elbowAngle: number, feedback: string, physics?: PhysicsResult) => {
+    // Handle Shot from PosePipeline - NOW WITH PHYSICS & MOTION
+    const handleShot = (isPerfect: boolean, elbowAngle: number, feedback: string, physics?: PhysicsResult, motionData?: any[], videoTimestamp: number = 0) => {
         const newShot: ShotRecord = {
             id: shots.length + 1,
             timestamp: Date.now(),
             elbowAngle,
             isPerfect,
             feedback,
-            trajectory: physics // Store physics for 3D replay
+            trajectory: physics, // Store physics for 3D replay
+            motionData: motionData, // Full motion history
+            videoTimestamp: videoTimestamp // Sync with video
         };
 
         setShots(prev => [...prev, newShot]);
@@ -307,7 +310,7 @@ export default function CoachPage() {
                     <PosePipeline
                         mode="TRAIN"
                         onLog={addLog}
-                        onShot={(isPerfect) => handleShot(isPerfect, angleRef.current, isPerfect ? 'GOOD' : 'POOR')}
+                        onShot={(isPerfect, angle, feedback, physics, motion, ts) => handleShot(isPerfect, angle, isPerfect ? 'GOOD' : 'POOR', physics, motion, ts)}
                         onStreamReady={startRecording}
                         onLandmarksUpdate={(shoulder, wrist) => { landmarksRef.current = { shoulder, wrist }; }}
                     />
@@ -382,34 +385,93 @@ export default function CoachPage() {
                             </div>
                         </div>
 
-                        {/* Split View */}
-                        <Suspense fallback={<div className="h-[400px] flex items-center justify-center"><Loader2 className="animate-spin" /></div>}>
-                            <SplitView videoBlob={videoBlob} onPlayStateChange={setIsReplayPlaying}>
-                                <CourtScene physics={physics} isPlaying={isReplayPlaying} />
-                            </SplitView>
-                        </Suspense>
+                        {/* Split Master/Detail View */}
+                        <div className="grid grid-cols-3 gap-6 h-[600px]">
 
-                        {/* Physics Info */}
-                        {physics && (
-                            <ProCard className="grid grid-cols-4 gap-4 text-center">
-                                <div>
-                                    <div className="text-2xl font-mono text-pro-green">{physics.releaseAngle}°</div>
-                                    <div className="text-xs text-gray-500">Release Angle</div>
+                            {/* LEFT: SHOT TAPE (Playlist) */}
+                            <div className="col-span-1 bg-white/5 rounded-2xl border border-white/10 overflow-hidden flex flex-col">
+                                <div className="p-4 border-b border-white/10 bg-white/5">
+                                    <h3 className="font-bold text-white flex items-center gap-2">
+                                        <Play className="w-4 h-4 text-pro-blue" /> Shot Tape
+                                    </h3>
                                 </div>
-                                <div>
-                                    <div className="text-2xl font-mono text-pro-blue">{physics.releaseVelocity.toFixed(1)} m/s</div>
-                                    <div className="text-xs text-gray-500">Release Velocity</div>
+                                <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                                    {shots.map((shot, idx) => (
+                                        <button
+                                            key={shot.id}
+                                            onClick={() => setSelectedShotId(shot.id)}
+                                            className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between group ${selectedShotId === shot.id
+                                                ? 'bg-pro-blue text-white shadow-lg shadow-pro-blue/20'
+                                                : 'bg-black/20 text-gray-400 hover:bg-white/10 hover:text-white'
+                                                }`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${shot.isPerfect ? 'bg-pro-green text-black' : 'bg-red-500/20 text-red-500'
+                                                    }`}>
+                                                    {idx + 1}
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-bold">{shot.isPerfect ? 'Swish' : 'Miss'}</div>
+                                                    <div className="text-[10px] opacity-60 font-mono">{shot.elbowAngle}° Angle</div>
+                                                </div>
+                                            </div>
+                                            {selectedShotId === shot.id && <Play className="w-3 h-3 fill-current" />}
+                                        </button>
+                                    ))}
                                 </div>
-                                <div>
-                                    <div className="text-2xl font-mono text-orange-400">{physics.arcHeight.toFixed(2)}m</div>
-                                    <div className="text-xs text-gray-500">Arc Height</div>
-                                </div>
-                                <div>
-                                    <div className="text-2xl font-mono text-white">{physics.timeOfFlight.toFixed(2)}s</div>
-                                    <div className="text-xs text-gray-500">Flight Time</div>
-                                </div>
-                            </ProCard>
-                        )}
+                            </div>
+
+                            {/* RIGHT: PLAYER (Video + 3D) */}
+                            <div className="col-span-2 flex flex-col gap-4">
+                                <Suspense fallback={<div className="h-[400px] flex items-center justify-center"><Loader2 className="animate-spin" /></div>}>
+                                    <SplitView
+                                        videoBlob={videoBlob}
+                                        onPlayStateChange={setIsReplayPlaying}
+                                        clipRange={selectedShotId ? {
+                                            start: Math.max(0, (shots.find(s => s.id === selectedShotId)?.videoTimestamp || 0) - 1.5),
+                                            end: (shots.find(s => s.id === selectedShotId)?.videoTimestamp || 0) + 1.0
+                                        } : null}
+                                    >
+                                        <CourtScene
+                                            physics={selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory : physics}
+                                            motionData={selectedShotId ? shots.find(s => s.id === selectedShotId)?.motionData : undefined}
+                                            isPlaying={isReplayPlaying}
+                                        />
+                                    </SplitView>
+                                </Suspense>
+
+                                {/* Shot Analytics Card */}
+                                {(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory : physics) && (
+                                    <ProCard className="grid grid-cols-4 gap-4 text-center py-4">
+                                        {/* Helper to get physics easily */}
+                                        {(() => {
+                                            const p = selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory : physics;
+                                            if (!p) return null;
+                                            return (
+                                                <>
+                                                    <div>
+                                                        <div className="text-xl font-mono text-pro-green">{p.releaseAngle}°</div>
+                                                        <div className="text-[10px] text-gray-500 uppercase">Release Angle</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-xl font-mono text-pro-blue">{p.releaseVelocity.toFixed(1)} m/s</div>
+                                                        <div className="text-[10px] text-gray-500 uppercase">Velocity</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-xl font-mono text-orange-400">{p.arcHeight.toFixed(2)}m</div>
+                                                        <div className="text-[10px] text-gray-500 uppercase">Arc Height</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-xl font-mono text-white">{p.timeOfFlight.toFixed(2)}s</div>
+                                                        <div className="text-[10px] text-gray-500 uppercase">Flight Time</div>
+                                                    </div>
+                                                </>
+                                            )
+                                        })()}
+                                    </ProCard>
+                                )}
+                            </div>
+                        </div>
 
                         {/* Actions */}
                         <div className="flex gap-4">

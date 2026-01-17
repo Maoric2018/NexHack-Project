@@ -1,282 +1,218 @@
 "use client";
 
-import React, { useRef, useMemo, useEffect, useState } from 'react';
+import React, { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, Environment, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import { PhysicsResult } from '@/lib/physics';
 
-// Professional NBA-style Court
-function Court() {
+// ------------------------------------------------------------------
+// PRO CYBER COURT
+// ------------------------------------------------------------------
+function CyberCourt() {
     return (
         <group>
-            {/* Main Court */}
+            {/* Reflective Dark Floor */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-                <planeGeometry args={[15, 14]} />
-                <meshStandardMaterial color="#CD853F" roughness={0.4} metalness={0.1} />
+                <planeGeometry args={[20, 20]} />
+                <meshStandardMaterial
+                    color="#050510"
+                    roughness={0.1}
+                    metalness={0.8}
+                    envMapIntensity={1}
+                />
             </mesh>
 
-            {/* Paint/Key Area */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 5]}>
+            {/* Neon Grid Lines */}
+            <gridHelper args={[20, 20, 0x00F0FF, 0x111122]} position={[0, 0.01, 0]} />
+
+            {/* 3-Point Line (Glowing) */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 1]}>
+                <ringGeometry args={[6.75, 6.85, 64, 1, 0, Math.PI]} />
+                <meshBasicMaterial color="#00F0FF" toneMapped={false} />
+            </mesh>
+
+            {/* Key Area (Holographic Red) */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 5]}>
                 <planeGeometry args={[4.88, 5.8]} />
-                <meshStandardMaterial color="#8B0000" roughness={0.5} />
+                <meshBasicMaterial color="#FF0055" transparent opacity={0.1} side={THREE.DoubleSide} />
             </mesh>
 
-            {/* Free Throw Circle */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 4.19]}>
-                <ringGeometry args={[1.75, 1.82, 64]} />
-                <meshBasicMaterial color="white" />
-            </mesh>
-
-            {/* Free Throw Line */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 4.19]}>
-                <planeGeometry args={[3.66, 0.08]} />
-                <meshBasicMaterial color="white" />
-            </mesh>
-
-            {/* Three Point Line */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 1]}>
-                <ringGeometry args={[6.75, 6.82, 64, 1, 0, Math.PI]} />
-                <meshBasicMaterial color="white" />
-            </mesh>
-
-            {/* Backboard */}
-            <mesh position={[0, 3.95, 7.9]} castShadow>
-                <boxGeometry args={[1.83, 1.22, 0.08]} />
-                <meshPhysicalMaterial color="#ffffff" transparent opacity={0.4} roughness={0} metalness={0.2} />
-            </mesh>
-
-            {/* Rim */}
-            <mesh position={[0, 3.05, 7.5]} rotation={[Math.PI / 2, 0, 0]}>
-                <torusGeometry args={[0.225, 0.015, 16, 32]} />
-                <meshStandardMaterial color="#FF4500" metalness={0.8} roughness={0.2} />
-            </mesh>
-
-            {/* Net */}
-            <mesh position={[0, 2.75, 7.5]}>
-                <cylinderGeometry args={[0.225, 0.15, 0.4, 12, 1, true]} />
-                <meshBasicMaterial color="#FFFFFF" wireframe transparent opacity={0.6} />
-            </mesh>
-
-            {/* Backboard Support */}
-            <mesh position={[0, 2.5, 8.3]} castShadow>
-                <cylinderGeometry args={[0.08, 0.08, 5, 16]} />
-                <meshStandardMaterial color="#333" metalness={0.9} roughness={0.1} />
-            </mesh>
+            {/* Hoop Assembly */}
+            <group position={[0, 0, 7.5]}>
+                {/* Pole */}
+                <mesh position={[0, 2, 1]} castShadow>
+                    <cylinderGeometry args={[0.1, 0.1, 4, 16]} />
+                    <meshStandardMaterial color="#333" />
+                </mesh>
+                {/* Backboard */}
+                <mesh position={[0, 3.95, 0.4]} castShadow>
+                    <boxGeometry args={[1.83, 1.22, 0.1]} />
+                    <meshPhysicalMaterial color="white" transmission={0.9} thickness={0.5} roughness={0} />
+                </mesh>
+                {/* Rim */}
+                <mesh position={[0, 3.05, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                    <torusGeometry args={[0.225, 0.02, 16, 32]} />
+                    <meshStandardMaterial color="#FF4500" emissive="#FF4500" emissiveIntensity={0.5} />
+                </mesh>
+            </group>
         </group>
     );
 }
 
-// Animated Basketball with Physics
-function AnimatedBall({ isPlaying, physics }: { isPlaying: boolean; physics?: PhysicsResult }) {
-    const meshRef = useRef<THREE.Mesh>(null);
-    const [progress, setProgress] = useState(0);
-
-    // Ball texture pattern
-    const ballMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-        color: '#FF6B00',
-        roughness: 0.7,
-        metalness: 0.1,
-    }), []);
-
-    useFrame((_, delta) => {
-        if (!isPlaying || !physics || !meshRef.current) return;
-
-        // Animate along trajectory
-        setProgress(prev => {
-            const next = prev + delta * 0.8;
-            return next > 1 ? 0 : next;
-        });
-
-        // Get position from trajectory
-        const idx = Math.floor(progress * (physics.trajectoryPoints.length - 1));
-        const point = physics.trajectoryPoints[Math.min(idx, physics.trajectoryPoints.length - 1)];
-
-        if (point) {
-            meshRef.current.position.set(point.x, point.y, point.z + 2);
-            // Spin the ball
-            meshRef.current.rotation.x += delta * 5;
-            meshRef.current.rotation.z += delta * 3;
-        }
-    });
-
-    // Reset when not playing
-    useEffect(() => {
-        if (!isPlaying) setProgress(0);
-    }, [isPlaying]);
-
-    if (!isPlaying) return null;
-
-    return (
-        <mesh ref={meshRef} material={ballMaterial} castShadow position={[0, 1.8, 2]}>
-            <sphereGeometry args={[0.12, 32, 32]} />
-        </mesh>
-    );
-}
-
-// Professional Player Model
-function Player({ isPlaying }: { isPlaying: boolean }) {
+// ------------------------------------------------------------------
+// HOLOGRAPHIC PLAYER (Reconsructed from Motion Data)
+// ------------------------------------------------------------------
+function HologramPlayer({ motionData, isPlaying, frameIndex }: { motionData?: any[][], isPlaying: boolean, frameIndex: number }) {
     const groupRef = useRef<THREE.Group>(null);
-    const armRef = useRef<THREE.Group>(null);
-    const [phase, setPhase] = useState(0);
 
-    useFrame((_, delta) => {
-        if (!isPlaying || !armRef.current) return;
+    // Skeleton topology (pairs of indices to connect)
+    const connections = [
+        [11, 12], [11, 23], [12, 24], [23, 24], // Torso
+        [12, 14], [14, 16], // R Arm
+        [11, 13], [13, 15], // L Arm
+        [24, 26], [26, 28], // R Leg
+        [23, 25], [25, 27]  // L Leg
+    ];
 
-        setPhase(prev => {
-            const next = prev + delta * 2;
-            return next > Math.PI ? 0 : next;
-        });
+    // Current Frame Landmarks
+    const landmarks = useMemo(() => {
+        if (!motionData || motionData.length === 0) return null;
+        const idx = Math.min(Math.floor(frameIndex), motionData.length - 1);
+        return motionData[idx];
+    }, [motionData, frameIndex]);
 
-        // Shooting motion
-        const t = Math.sin(phase);
-        armRef.current.rotation.x = -0.8 - t * 0.6;
-    });
+    if (!landmarks) return null;
 
-    useEffect(() => {
-        if (!isPlaying) setPhase(0);
-    }, [isPlaying]);
+    // Helper to map 2D (0..1) to 3D Space
+    // X -> -5 to 5
+    // Y -> 0 to 4 (Inverted 1-y)
+    // Z -> 0 (Flat plane, maybe slightly curved?)
+    const getPos = (idx: number) => {
+        const pt = landmarks[idx];
+        if (!pt || (pt.visibility || 0) < 0.3) return null;
+        return new THREE.Vector3(
+            (pt.x - 0.5) * -5, // Scale width, flip X
+            (1 - pt.y) * 4 - 1, // Scale height, offset
+            0
+        );
+    };
 
     return (
         <group ref={groupRef} position={[0, 0, 2]}>
-            {/* Jersey/Torso */}
-            <mesh position={[0, 1.15, 0]} castShadow>
-                <capsuleGeometry args={[0.22, 0.45, 8, 16]} />
-                <meshStandardMaterial color="#1E3A5F" roughness={0.8} />
-            </mesh>
-
-            {/* Shorts */}
-            <mesh position={[0, 0.75, 0]} castShadow>
-                <capsuleGeometry args={[0.18, 0.15, 8, 16]} />
-                <meshStandardMaterial color="#FFFFFF" roughness={0.8} />
-            </mesh>
-
-            {/* Head */}
-            <mesh position={[0, 1.65, 0]} castShadow>
-                <sphereGeometry args={[0.12, 32, 32]} />
-                <meshStandardMaterial color="#8B4513" roughness={0.6} />
-            </mesh>
-
-            {/* Shooting Arm */}
-            <group ref={armRef} position={[0.28, 1.35, 0.1]} rotation={[-0.8, 0, 0]}>
-                {/* Upper Arm */}
-                <mesh position={[0, 0.12, 0]} castShadow>
-                    <capsuleGeometry args={[0.05, 0.22, 8, 16]} />
-                    <meshStandardMaterial color="#8B4513" roughness={0.6} />
-                </mesh>
-                {/* Forearm */}
-                <group position={[0, 0.3, 0]} rotation={[0.6, 0, 0]}>
-                    <mesh position={[0, 0.1, 0]} castShadow>
-                        <capsuleGeometry args={[0.04, 0.18, 8, 16]} />
-                        <meshStandardMaterial color="#8B4513" roughness={0.6} />
+            {/* JOINTS */}
+            {[11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28].map(idx => {
+                const pos = getPos(idx);
+                if (!pos) return null;
+                return (
+                    <mesh key={idx} position={pos}>
+                        <sphereGeometry args={[0.08, 16, 16]} />
+                        <meshBasicMaterial color="white" />
                     </mesh>
-                    {/* Hand with ball (only when not shooting) */}
-                    {!isPlaying && (
-                        <mesh position={[0, 0.25, 0]} castShadow>
-                            <sphereGeometry args={[0.12, 32, 32]} />
-                            <meshStandardMaterial color="#FF6B00" roughness={0.7} />
-                        </mesh>
-                    )}
-                </group>
-            </group>
+                )
+            })}
 
-            {/* Guide Arm */}
-            <group position={[-0.25, 1.3, 0.15]} rotation={[-0.6, 0, 0.4]}>
-                <mesh position={[0, 0.12, 0]} castShadow>
-                    <capsuleGeometry args={[0.04, 0.2, 8, 16]} />
-                    <meshStandardMaterial color="#8B4513" roughness={0.6} />
-                </mesh>
-            </group>
+            {/* BONES */}
+            {connections.map(([a, b], i) => {
+                const p1 = getPos(a);
+                const p2 = getPos(b);
+                if (!p1 || !p2) return null;
 
-            {/* Legs */}
-            <mesh position={[-0.1, 0.38, 0]} rotation={[0.05, 0, 0.08]} castShadow>
-                <capsuleGeometry args={[0.06, 0.5, 8, 16]} />
-                <meshStandardMaterial color="#8B4513" roughness={0.6} />
-            </mesh>
-            <mesh position={[0.1, 0.38, 0]} rotation={[0.05, 0, -0.08]} castShadow>
-                <capsuleGeometry args={[0.06, 0.5, 8, 16]} />
-                <meshStandardMaterial color="#8B4513" roughness={0.6} />
-            </mesh>
+                const dist = p1.distanceTo(p2);
+                const mid = p1.clone().add(p2).multiplyScalar(0.5);
+                const quaternion = new THREE.Quaternion();
+                const up = new THREE.Vector3(0, 1, 0);
+                const axis = p1.clone().sub(p2).normalize();
+                quaternion.setFromUnitVectors(up, axis);
 
-            {/* Shoes */}
-            <mesh position={[-0.1, 0.08, 0.05]} castShadow>
-                <boxGeometry args={[0.1, 0.08, 0.18]} />
-                <meshStandardMaterial color="#FF0000" roughness={0.8} />
-            </mesh>
-            <mesh position={[0.1, 0.08, 0.05]} castShadow>
-                <boxGeometry args={[0.1, 0.08, 0.18]} />
-                <meshStandardMaterial color="#FF0000" roughness={0.8} />
-            </mesh>
+                return (
+                    <mesh key={i} position={mid} quaternion={quaternion}>
+                        <cylinderGeometry args={[0.04, 0.04, dist, 8]} />
+                        <meshBasicMaterial color="#00F0FF" transparent opacity={0.6} />
+                    </mesh>
+                )
+            })}
         </group>
     );
 }
 
-// Trajectory Trail
-function TrajectoryLine({ physics, visible }: { physics?: PhysicsResult; visible: boolean }) {
-    const lineRef = useRef<THREE.Line>(null);
 
-    const { geometry, material } = useMemo(() => {
-        if (!physics) return { geometry: null, material: null };
+// ------------------------------------------------------------------
+// PLAYBACK CONTROLLER (Must be INSIDE Canvas)
+// ------------------------------------------------------------------
+function PlaybackController({ motionData, isPlaying, onFrameUpdate }: {
+    motionData?: any[][],
+    isPlaying: boolean,
+    onFrameUpdate: (idx: number) => void
+}) {
+    const frameRef = useRef(0);
 
-        const points = physics.trajectoryPoints.map(p => new THREE.Vector3(p.x, p.y, p.z + 2));
-        const geo = new THREE.BufferGeometry().setFromPoints(points);
-        const mat = new THREE.LineDashedMaterial({
-            color: 0x00FF88,
-            dashSize: 0.15,
-            gapSize: 0.08,
-            transparent: true,
-            opacity: 0.7
-        });
+    useFrame((_, delta) => {
+        if (isPlaying && motionData && motionData.length > 0) {
+            frameRef.current = (frameRef.current + delta * 30) % motionData.length;
+            onFrameUpdate(frameRef.current);
+        }
+    });
 
-        return { geometry: geo, material: mat };
-    }, [physics]);
+    useEffect(() => {
+        if (!isPlaying) {
+            frameRef.current = 0;
+            onFrameUpdate(0);
+        }
+    }, [isPlaying, onFrameUpdate]);
 
-    if (!visible || !geometry || !material) return null;
-
-    return <primitive ref={lineRef} object={new THREE.Line(geometry, material)} />;
+    return null; // Component renders nothing, just runs logic
 }
 
-// Main Scene Export
+
+// ------------------------------------------------------------------
+// MAIN SCENE
+// ------------------------------------------------------------------
 interface CourtSceneProps {
     physics?: PhysicsResult;
+    motionData?: any[][];
     isPlaying: boolean;
 }
 
-export function CourtScene({ physics, isPlaying }: CourtSceneProps) {
+export function CourtScene({ physics, motionData, isPlaying }: CourtSceneProps) {
+    const [frameIndex, setFrameIndex] = useState(0);
+
+    // Memoize callback to prevent re-renders
+    const handleFrameUpdate = useCallback((idx: number) => {
+        setFrameIndex(idx);
+    }, []);
+
     return (
-        <div className="w-full h-full rounded-xl overflow-hidden border border-white/10 bg-gradient-to-b from-[#1a1a2e] to-[#0a0a12]">
-            <Canvas shadows>
-                <PerspectiveCamera makeDefault position={[8, 5, -3]} fov={45} />
+        <div className="w-full h-full rounded-xl overflow-hidden border border-white/10 bg-black">
+            <Canvas shadows dpr={[1, 2]}>
+                <PerspectiveCamera makeDefault position={[0, 2, -6]} fov={50} />
 
-                {/* Lighting */}
-                <ambientLight intensity={0.4} />
-                <directionalLight
-                    position={[10, 20, 5]}
-                    intensity={1.2}
-                    castShadow
-                    shadow-mapSize={[2048, 2048]}
+                {/* Cyber Lighting */}
+                <ambientLight intensity={0.2} />
+                <spotLight position={[10, 10, 10]} angle={0.5} penumbra={1} intensity={1} castShadow />
+                <pointLight position={[-10, 5, -10]} intensity={0.5} color="#00F0FF" />
+
+                {/* Environment */}
+                <Environment preset="city" />
+
+                {/* Playback Logic (MUST be inside Canvas) */}
+                <PlaybackController
+                    motionData={motionData}
+                    isPlaying={isPlaying}
+                    onFrameUpdate={handleFrameUpdate}
                 />
-                <spotLight position={[0, 12, 5]} intensity={0.8} angle={0.4} penumbra={0.5} color="#FFE4B5" />
-                <pointLight position={[-5, 8, -5]} intensity={0.3} color="#4169E1" />
 
-                {/* Scene */}
-                <Court />
-                <Player isPlaying={isPlaying} />
-                <AnimatedBall isPlaying={isPlaying} physics={physics} />
-                <TrajectoryLine physics={physics} visible={isPlaying} />
+                <group position={[0, -1, 0]}>
+                    <CyberCourt />
+                    <HologramPlayer motionData={motionData} isPlaying={isPlaying} frameIndex={frameIndex} />
+                </group>
 
-                {/* Controls */}
                 <OrbitControls
-                    enablePan={false}
-                    minDistance={4}
-                    maxDistance={20}
-                    minPolarAngle={0.2}
-                    maxPolarAngle={Math.PI / 2.1}
-                    target={[0, 1.5, 4]}
+                    target={[0, 1, 2]}
+                    maxPolarAngle={Math.PI / 2}
+                    minDistance={3}
+                    maxDistance={12}
                 />
-
-                {/* Atmosphere */}
-                <fog attach="fog" args={['#0a0a12', 18, 35]} />
             </Canvas>
         </div>
     );

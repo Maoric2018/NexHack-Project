@@ -7,209 +7,129 @@ type ShotState = 'IDLE' | 'SET' | 'RELEASE';
 type TrackingStatus = 'SEARCHING' | 'TRACKING' | 'LOCKED';
 
 export function useShotAnalysis() {
+    // Existing state declarations (needed for setters used in new analyzeFrame)
     const [state, setState] = useState<ShotState>('IDLE');
     const [feedback, setFeedback] = useState<string>("Get Ready");
     const [angle, setAngle] = useState<number>(0);
     const [isPerfect, setIsPerfect] = useState<boolean>(false);
     const [status, setStatus] = useState<TrackingStatus>('SEARCHING');
-    const [guidance, setGuidance] = useState<string>("");
-
-    // Smoothing State
-    const angleBufferRef = useRef<number[]>([]);
-    const BUFFER_SIZE = 5; // Moving average window
+    const [guidance, setGuidance] = useState<string>(""); // Guidance is not explicitly set in new logic, but kept for consistency
 
     // Physics State
     const [lastPhysics, setLastPhysics] = useState<PhysicsResult | undefined>(undefined);
-    const prevWristRef = useRef<{ x: number, y: number } | null>(null);
-    const prevTimeRef = useRef<number>(0);
-    const velocityBufferRef = useRef<number[]>([]);
 
     // Metrics State for Graph
     const [metrics, setMetrics] = useState<{ velocity: number, acceleration: number }>({ velocity: 0, acceleration: 0 });
 
-    // Anti-Flicker Hysteresis
-    const lostFrameCountRef = useRef<number>(0);
-    const LOST_FRAME_THRESHOLD = 8; // Require 8 frames of low confidence before switching to SEARCHING
-
-    // Shot Cooldown - Prevent rapid fire
-    const lastShotTimeRef = useRef<number>(0);
-    const SHOT_COOLDOWN_MS = 1500; // 1.5 seconds between shots
+    // --- NEW STATE & HISTORY ---
+    // Store full landmarks for 3D replay
+    const framesRef = useRef<{ time: number, angle: number, wristY: number, landmarks: Point[] }[]>([]);
+    const lastTriggerTimeRef = useRef<number>(0);
+    const COOLDOWN_MS = 1000;
 
     const analyzeFrame = useCallback((landmarks: Point[]) => {
         if (!landmarks || landmarks.length < 33) return;
+        const now = Date.now();
 
-        // Visibility (LOWERED threshold for better detection)
+        // 1. Visibility & Keypoints
         const vis = (p: Point) => p?.visibility ?? 0;
-        const isVis = (p: Point) => vis(p) > 0.25; // Was 0.4, now more lenient
-
-        // Smart Arm Selection
         const rShoulder = landmarks[12], rElbow = landmarks[14], rWrist = landmarks[16];
         const lShoulder = landmarks[11], lElbow = landmarks[13], lWrist = landmarks[15];
-        const rHip = landmarks[24]; // Use right hip for right arm
-        const lHip = landmarks[23]; // Use left hip for left arm
 
+        // Auto-detect side
         const rConf = (vis(rShoulder) + vis(rElbow) + vis(rWrist)) / 3;
         const lConf = (vis(lShoulder) + vis(lElbow) + vis(lWrist)) / 3;
-
         const useRight = rConf >= lConf;
+
         const shoulder = useRight ? rShoulder : lShoulder;
         const elbow = useRight ? rElbow : lElbow;
         const wrist = useRight ? rWrist : lWrist;
-        const hip = useRight ? rHip : lHip;
 
-        // Tracking Check with HYSTERESIS
-        if (!isVis(elbow) || !isVis(shoulder)) {
-            lostFrameCountRef.current++;
-
-            // Only switch to SEARCHING after N consecutive bad frames
-            if (lostFrameCountRef.current >= LOST_FRAME_THRESHOLD) {
-                setStatus('SEARCHING');
-                setFeedback("Show Your Form");
-                setAngle(0);
-                angleBufferRef.current = []; // Reset buffer
-                velocityBufferRef.current = [];
-
-                if (rConf < 0.2 && lConf < 0.2) setGuidance("Step back to show arm");
-                else setGuidance("Adjust camera angle");
-            }
+        // Basic Tracking Check (Relaxed for sitting)
+        if (vis(elbow) < 0.3 || vis(wrist) < 0.3) {
+            setStatus('SEARCHING');
+            setFeedback("LOST TRACKING");
+            setAngle(0);
             return;
         }
-
-        // Good frame - reset lost counter
-        lostFrameCountRef.current = 0;
         setStatus('LOCKED');
-        setGuidance("");
 
-        // Calculate Angle
-        let rawAngle = calculateAngle(shoulder, elbow, wrist);
+        // 2. Metrics Calculation
+        const rawAngle = calculateAngle(shoulder, elbow, wrist);
+        const currentWristY = wrist.y;
 
-        // --- SMOOTHING ---
-        angleBufferRef.current.push(rawAngle);
-        if (angleBufferRef.current.length > BUFFER_SIZE) {
-            angleBufferRef.current.shift();
-        }
+        // Update Buffer (Keep last 2 seconds approx 60 frames)
+        // NOW STORING FULL LANDMARKS
+        framesRef.current.push({ time: now, angle: rawAngle, wristY: currentWristY, landmarks: landmarks });
+        if (framesRef.current.length > 100) framesRef.current.shift(); // Increased buffer size
+
+        // Smooth angle for UI
         const smoothedAngle = Math.round(
-            angleBufferRef.current.reduce((a, b) => a + b, 0) / angleBufferRef.current.length
+            framesRef.current.slice(-5).reduce((a, b) => a + b.angle, 0) / Math.min(5, framesRef.current.length)
         );
-
         setAngle(smoothedAngle);
 
-        // --- PHYSICS ENGINE (Impulse Detection) ---
-        const now = Date.now();
-        const dt = (now - prevTimeRef.current) / 1000; // seconds
+        // 3. SEQUENCE DETECTION ENGINE
+        if (now - lastTriggerTimeRef.current < COOLDOWN_MS) return; // Cooldown
 
-        let velocity = 0; // m/s (approx, normalized)
-        let acceleration = 0; // m/s^2
+        const currentFrame = framesRef.current[framesRef.current.length - 1];
 
-        if (prevWristRef.current && dt > 0 && dt < 1.0) { // Limit dt to avoid jumps on frame drops
-            // We focus on VERTICAL (Y) velocity for shot detection, as shots go UP.
-            // Note: Canvas Y is inverted (0 is top), so UP is NEGATIVE delta.
-            // We invert normalized Y so UP is POSITIVE for physics.
-            const dy = (prevWristRef.current.y - wrist.y); // Positive = Moving UP
-            const dx = Math.abs(wrist.x - prevWristRef.current.x);
+        if (currentFrame.angle > 135) { // Release
+            // Search backward
+            const lookbackWindow = framesRef.current.filter(f => now - f.time < 600);
+            const setPoint = lookbackWindow.find(f => f.angle < 100);
 
-            // Normalized speed
-            const speed = Math.sqrt(dx * dx + dy * dy) / dt;
+            if (setPoint) {
+                const verticalTravel = setPoint.wristY - currentFrame.wristY;
+                const isUpward = verticalTravel > 0.05;
 
-            // Smooth Velocity
-            velocityBufferRef.current.push(speed);
-            if (velocityBufferRef.current.length > 3) velocityBufferRef.current.shift();
-            velocity = velocityBufferRef.current.reduce((a, b) => a + b, 0) / velocityBufferRef.current.length;
+                if (isUpward) {
+                    // SHOT DETECTED!
+                    lastTriggerTimeRef.current = now;
+                    setState('RELEASE');
 
-            // Simple Acceleration
-            acceleration = (velocity - metrics.velocity) / dt;
-        }
+                    // Extract Motion Data (From Set Point - 500ms to Now + 500ms? No, stick to what we have)
+                    // We grab the last 1.5 seconds to capture the full setup and follow through
+                    const shotMotion = framesRef.current
+                        .filter(f => now - f.time < 1500)
+                        .map(f => f.landmarks);
 
-        setMetrics({ velocity, acceleration });
+                    // Physics
+                    const dt = (currentFrame.time - setPoint.time) / 1000;
+                    const velocity = verticalTravel / dt;
+                    const isFormPerfect = setPoint.angle > 80 && setPoint.angle < 110;
 
-        prevWristRef.current = { x: wrist.x, y: wrist.y };
-        prevTimeRef.current = now;
+                    setIsPerfect(isFormPerfect);
+                    setFeedback(isFormPerfect ? "SPLASH! 🎯" : "GOOD EXTENSION");
+                    audioCoach.speak(isFormPerfect ? 'perfect' : 'goodShot');
 
-        // State Machine
-        // RELAXED: Support sitting (if hip not visible, use shoulder + offset)
-        const hipConf = Math.max(vis(rHip), vis(lHip));
-        const isArmRaised = hipConf > 0.3
-            ? elbow.y < hip.y // Standing: Elbow above hip
-            : elbow.y < shoulder.y + 0.2; // Sitting/Close-up: Elbow near shoulder height (allow slight drop)
+                    setMetrics({ velocity: velocity, acceleration: velocity / dt });
+                    setLastPhysics({
+                        releaseAngle: currentFrame.angle,
+                        releaseVelocity: velocity * 10,
+                        trajectoryPoints: [],
+                        arcHeight: 0,
+                        timeOfFlight: 0
+                    });
 
-        if (!isArmRaised) {
-            if (state !== 'IDLE') {
-                setState('IDLE');
-                setFeedback("Ready Position");
-                setIsPerfect(false);
-            }
-            return;
-        }
+                    // Trigger callback with motion data (via return, managed by Pipeline)
+                    // We attach it to the ephemeral state return effectively, but clearer to just expose it
 
-        // SET PHASE (< 120 degrees)
-        if (state === 'IDLE' && smoothedAngle < 120) {
-            setState('SET');
+                    // Reset
+                    setTimeout(() => setState('IDLE'), 500);
 
-            // STRICT FORM CHECK (85-95 degrees ideal)
-            if (smoothedAngle < 70) {
-                setFeedback("TOO TIGHT");
-                setIsPerfect(false);
-                audioCoach.speak('tooTight');
-            } else if (smoothedAngle > 110) {
-                setFeedback("TUCK ELBOW");
-                setIsPerfect(false);
-                audioCoach.speak('elbowTuck');
-            } else if (smoothedAngle >= 85 && smoothedAngle <= 95) {
-                setFeedback("PERFECT FORM");
-                setIsPerfect(true);
-            } else {
-                setFeedback("ADJUST ELBOW"); // 70-85 or 95-110
-                setIsPerfect(false);
-            }
-        }
-        // RELEASE DETECTION (Impulse Based)
-        // 1. Must be in SET (or ready)
-        // 2. Arm extending (Angle Opening)
-        // 3. Vertical Velocity Spike (Impulse)
-        // 4. Not in cooldown from last shot
-        if (state === 'SET') {
-            // LOWERED: Previous 0.5 was too high - many shots missed
-            const VELOCITY_THRESHOLD = 0.15;
-            const isExplosive = velocity > VELOCITY_THRESHOLD;
-            // LOWERED: 100 degrees catches the release earlier in the motion
-            const isExtending = smoothedAngle > 100;
-
-            // Cooldown Check
-            const now = Date.now();
-            const timeSinceLastShot = now - lastShotTimeRef.current;
-            const notInCooldown = timeSinceLastShot > SHOT_COOLDOWN_MS;
-
-            if (isExplosive && isExtending && notInCooldown) {
-                lastShotTimeRef.current = now; // Start cooldown
-                setState('RELEASE');
-
-                // --- EVALUATION ---
-                const angleOk = smoothedAngle > 40; // Basic check
-                const powerOk = velocity > 0.8 && velocity < 3.0; // Sweet spot
-                const formOk = isPerfect;
-
-                const releaseAngle = calculateReleaseAngle(shoulder, wrist);
-                // Estimate real velocity based on normalized speed (assuming avg arm length)
-                const releaseVel = velocity * 10; // Scalar to approx m/s
-                const trajectory = calculateTrajectory(1.8, releaseAngle, releaseVel);
-                setLastPhysics(trajectory);
-
-                const isGoodShot = formOk && powerOk;
-
-                if (isGoodShot) {
-                    setFeedback(`SPLASH! ${(velocity * 10).toFixed(1)}m/s 🎯`);
-                    audioCoach.speak('perfect');
-                } else if (!formOk) {
-                    setFeedback("FIX FORM ⚠️");
-                } else if (!powerOk) {
-                    setFeedback(velocity < 0.8 ? "TOO WEAK ⚠️" : "TOO HARD ⚠️");
-                    audioCoach.speak('power');
+                    return { shotMotion }; // Return specialized data for this one frame
                 }
-
-                setIsPerfect(isGoodShot);
             }
+        } else if (smoothedAngle < 100) {
+            setState('SET');
+            if (smoothedAngle < 60) setFeedback("TOO TIGHT");
+            else setFeedback("READY");
+        } else {
+            setState('IDLE');
         }
-    }, [state, isPerfect, lastPhysics, metrics]);
+
+    }, [audioCoach]);
 
     return {
         analyzeFrame,
