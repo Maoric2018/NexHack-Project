@@ -6,9 +6,10 @@ import { Loader2, CameraOff } from "lucide-react";
 
 interface LiveKitFeedProps {
     onVideoReady?: (video: HTMLVideoElement) => void;
+    onStreamReady?: (stream: MediaStream) => void;
 }
 
-export function LiveKitFeed({ onVideoReady }: LiveKitFeedProps) {
+export function LiveKitFeed({ onVideoReady, onStreamReady }: LiveKitFeedProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [track, setTrack] = useState<LocalVideoTrack | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -28,15 +29,20 @@ export function LiveKitFeed({ onVideoReady }: LiveKitFeedProps) {
                     if (videoRef.current) {
                         videoTrack.attach(videoRef.current);
 
-                        // CRITICAL: Wait for video to actually start playing before notifying parent
+                        // Wait for video to actually start playing before notifying parent
                         videoRef.current.onloadeddata = () => {
                             console.log("[LiveKitFeed] Video loaded and playing");
                             if (onVideoReady && videoRef.current) {
                                 onVideoReady(videoRef.current);
                             }
+                            // Provide stream for recording
+                            if (onStreamReady && videoRef.current) {
+                                const stream = (videoRef.current as any).captureStream?.(30) ||
+                                    (videoRef.current as any).mozCaptureStream?.(30);
+                                if (stream) onStreamReady(stream);
+                            }
                         };
 
-                        // Trigger play explicitly
                         videoRef.current.play().catch(e => console.error("Video play failed:", e));
                     }
                 } else {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { Flame, Trophy, Sparkles } from 'lucide-react';
 
@@ -22,7 +22,6 @@ export function ProgressRing({ current, total, size = 120, className }: Progress
     return (
         <div className={cn("relative flex items-center justify-center", className)} style={{ width: size, height: size }}>
             <svg width={size} height={size} className="transform -rotate-90">
-                {/* Background Circle */}
                 <circle
                     cx={size / 2}
                     cy={size / 2}
@@ -31,7 +30,6 @@ export function ProgressRing({ current, total, size = 120, className }: Progress
                     stroke="rgba(255,255,255,0.1)"
                     strokeWidth={strokeWidth}
                 />
-                {/* Progress Circle */}
                 <circle
                     cx={size / 2}
                     cy={size / 2}
@@ -88,7 +86,7 @@ export function StreakBadge({ streak, className }: StreakBadgeProps) {
     );
 }
 
-// Celebration Overlay Component
+// Celebration Overlay - FIXED: proper effect cleanup and guards
 interface CelebrationOverlayProps {
     show: boolean;
     grade: 'S' | 'A' | 'B' | 'C';
@@ -97,17 +95,32 @@ interface CelebrationOverlayProps {
 
 export function CelebrationOverlay({ show, grade, onComplete }: CelebrationOverlayProps) {
     const [visible, setVisible] = useState(false);
+    const hasTriggeredRef = useRef(false);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
-        if (show) {
+        // Only trigger once when show becomes true
+        if (show && !hasTriggeredRef.current) {
+            hasTriggeredRef.current = true;
             setVisible(true);
-            const timer = setTimeout(() => {
+
+            timerRef.current = setTimeout(() => {
                 setVisible(false);
                 onComplete?.();
             }, 3000);
-            return () => clearTimeout(timer);
         }
-    }, [show, onComplete]);
+
+        // Reset when show becomes false
+        if (!show) {
+            hasTriggeredRef.current = false;
+        }
+
+        return () => {
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+            }
+        };
+    }, [show]); // Removed onComplete from deps to prevent re-triggers
 
     if (!visible) return null;
 

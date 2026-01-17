@@ -1,3 +1,5 @@
+import { PhysicsResult } from './physics';
+
 // Shot record type for tracking individual shots
 export interface ShotRecord {
     id: number;
@@ -7,6 +9,7 @@ export interface ShotRecord {
     feedback: string;
     // Pose landmarks at release (normalized 0-1)
     landmarks?: { x: number; y: number; z?: number }[];
+    trajectory?: PhysicsResult;
 }
 
 // Session data for Film Room

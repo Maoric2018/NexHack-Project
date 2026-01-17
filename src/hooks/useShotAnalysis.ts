@@ -1,5 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Point, calculateAngle } from '@/lib/poseUtils';
+import { audioCoach } from '@/lib/audioFeedback';
+import { calculateTrajectory, PhysicsResult, calculateReleaseAngle, estimateReleaseVelocity } from '@/lib/physics';
 
 type ShotState = 'IDLE' | 'SET' | 'RELEASE';
 type TrackingStatus = 'SEARCHING' | 'TRACKING' | 'LOCKED';
@@ -12,98 +14,162 @@ export function useShotAnalysis() {
     const [status, setStatus] = useState<TrackingStatus>('SEARCHING');
     const [guidance, setGuidance] = useState<string>("");
 
+    // Smoothing State
+    const angleBufferRef = useRef<number[]>([]);
+    const BUFFER_SIZE = 5; // Moving average window
+
+    // Physics State
+    const [lastPhysics, setLastPhysics] = useState<PhysicsResult | undefined>(undefined);
+    const prevWristRef = useRef<{ x: number, y: number } | null>(null);
+    const prevTimeRef = useRef<number>(0);
+
     const analyzeFrame = useCallback((landmarks: Point[]) => {
         if (!landmarks || landmarks.length < 33) return;
 
-        // Visibility check helper - very low threshold
+        // Visibility
         const vis = (p: Point) => p?.visibility ?? 0;
-        const isVis = (p: Point) => vis(p) > 0.2;
+        const isVis = (p: Point) => vis(p) > 0.4; // STRICTER VISIBILITY
 
-        // Right arm landmarks
-        const rShoulder = landmarks[12];
-        const rElbow = landmarks[14];
-        const rWrist = landmarks[16];
+        // Smart Arm Selection
+        const rShoulder = landmarks[12], rElbow = landmarks[14], rWrist = landmarks[16];
+        const lShoulder = landmarks[11], lElbow = landmarks[13], lWrist = landmarks[15];
+        const rHip = landmarks[24]; // Use right hip for right arm
+        const lHip = landmarks[23]; // Use left hip for left arm
 
-        // Left arm landmarks
-        const lShoulder = landmarks[11];
-        const lElbow = landmarks[13];
-        const lWrist = landmarks[15];
+        const rConf = (vis(rShoulder) + vis(rElbow) + vis(rWrist)) / 3;
+        const lConf = (vis(lShoulder) + vis(lElbow) + vis(lWrist)) / 3;
 
-        // Hip for raised arm detection
-        const rHip = landmarks[24];
-        const lHip = landmarks[23];
-
-        // Determine which arm to use based on visibility
-        const rightVis = (vis(rShoulder) + vis(rElbow) + vis(rWrist)) / 3;
-        const leftVis = (vis(lShoulder) + vis(lElbow) + vis(lWrist)) / 3;
-
-        const useRight = rightVis >= leftVis;
+        const useRight = rConf >= lConf;
         const shoulder = useRight ? rShoulder : lShoulder;
         const elbow = useRight ? rElbow : lElbow;
         const wrist = useRight ? rWrist : lWrist;
         const hip = useRight ? rHip : lHip;
 
-        // Debug log
-        console.log(`[Tracking] Using ${useRight ? 'RIGHT' : 'LEFT'} arm. Vis: ${(useRight ? rightVis : leftVis).toFixed(2)}`);
-
-        // Visibility check
+        // Tracking Check
         if (!isVis(elbow) || !isVis(shoulder)) {
             setStatus('SEARCHING');
-            setFeedback("Position Yourself");
+            setFeedback("Show Your Form");
             setAngle(0);
+            angleBufferRef.current = []; // Reset buffer
 
-            // Provide directional guidance
-            if (rightVis < 0.1 && leftVis < 0.1) {
-                setGuidance("Step back to show upper body");
-            } else if (rightVis < leftVis) {
-                setGuidance("Move right or turn slightly");
-            } else {
-                setGuidance("Move left or turn slightly");
-            }
-            return;
-        }
-
-        setGuidance("");
-        setStatus('TRACKING');
-
-        // Calculate Elbow Angle
-        const elbowAngle = calculateAngle(shoulder, elbow, wrist);
-        setAngle(Math.round(elbowAngle));
-
-        // Check if arm is raised
-        const isArmRaised = elbow.y < hip.y;
-
-        if (!isArmRaised) {
-            setState('IDLE');
-            setFeedback("Raise Ball");
-            setIsPerfect(false);
+            if (rConf < 0.2 && lConf < 0.2) setGuidance("Step back to show arm");
+            else setGuidance("Adjust camera angle");
             return;
         }
 
         setStatus('LOCKED');
+        setGuidance("");
 
-        // Form Analysis State Machine
-        if (elbowAngle < 120) {
+        // Calculate Angle
+        let rawAngle = calculateAngle(shoulder, elbow, wrist);
+
+        // --- SMOOTHING ---
+        angleBufferRef.current.push(rawAngle);
+        if (angleBufferRef.current.length > BUFFER_SIZE) {
+            angleBufferRef.current.shift();
+        }
+        const smoothedAngle = Math.round(
+            angleBufferRef.current.reduce((a, b) => a + b, 0) / angleBufferRef.current.length
+        );
+
+        setAngle(smoothedAngle);
+
+        // Velocity Tracking (Pixels per second)
+        const now = Date.now();
+        const dt = (now - prevTimeRef.current) / 1000;
+        let velocity = 0;
+
+        if (prevWristRef.current && dt > 0) {
+            const dx = wrist.x - prevWristRef.current.x;
+            const dy = wrist.y - prevWristRef.current.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            velocity = dist / dt; // Normalized pixels per second
+        }
+
+        prevWristRef.current = { x: wrist.x, y: wrist.y };
+        prevTimeRef.current = now;
+
+        // State Machine
+        const isArmRaised = elbow.y < hip.y;
+
+        if (!isArmRaised) {
+            if (state !== 'IDLE') {
+                setState('IDLE');
+                setFeedback("Ready Position");
+                setIsPerfect(false);
+            }
+            return;
+        }
+
+        // SET PHASE (< 120 degrees)
+        if (smoothedAngle < 120) {
             setState('SET');
 
-            if (elbowAngle > 110) {
-                setFeedback("TUCK ELBOW");
-                setIsPerfect(false);
-            } else if (elbowAngle < 70) {
+            // STRICT FORM CHECK (85-95 degrees ideal)
+            if (smoothedAngle < 70) {
                 setFeedback("TOO TIGHT");
                 setIsPerfect(false);
-            } else {
+                audioCoach.speak('tooTight');
+            } else if (smoothedAngle > 110) {
+                setFeedback("TUCK ELBOW");
+                setIsPerfect(false);
+                audioCoach.speak('elbowTuck');
+            } else if (smoothedAngle >= 85 && smoothedAngle <= 95) {
                 setFeedback("PERFECT FORM");
                 setIsPerfect(true);
-            }
-        } else if (elbowAngle > 140) {
-            if (state === 'SET') {
-                setState('RELEASE');
-                setFeedback("NICE RELEASE!");
-                setIsPerfect(true);
+            } else {
+                setFeedback("ADJUST ELBOW"); // 70-85 or 95-110
+                setIsPerfect(false);
             }
         }
-    }, [state]);
+        // RELEASE PHASE (> 140 degrees)
+        else if (smoothedAngle > 140) {
+            if (state === 'SET') {
+                setState('RELEASE');
 
-    return { analyzeFrame, angle, state, feedback, isPerfect, status, guidance };
+                // FINAL SHOT EVALUATION
+                // 1. Angle Check
+                const angleOk = lastPhysics ? (lastPhysics.releaseAngle > 40 && lastPhysics.releaseAngle < 60) : true;
+
+                // 2. Velocity Check (prevent slow pushing)
+                const velocityOk = velocity > 0.8; // Threshold based on normalized coords
+
+                // 3. Form Check
+                const isGoodShot = isPerfect && angleOk && velocityOk;
+
+                // Physics Calculation
+                const releaseAngle = calculateReleaseAngle(shoulder, wrist);
+                const releaseVel = estimateReleaseVelocity(smoothedAngle);
+                const trajectory = calculateTrajectory(1.8, releaseAngle, releaseVel);
+                setLastPhysics(trajectory);
+
+                // Feedback
+                if (isGoodShot) {
+                    setFeedback("SPLASH! 🎯");
+                    audioCoach.speak('perfect');
+                } else if (!isPerfect) {
+                    setFeedback("FIX ELBOW ⚠️");
+                } else if (!velocityOk) {
+                    setFeedback("TOO SLOW ⚠️");
+                    audioCoach.speak('power');
+                } else {
+                    setFeedback("OFF TARGET ⚠️");
+                    audioCoach.speak('arc');
+                }
+
+                setIsPerfect(isGoodShot);
+            }
+        }
+    }, [state, isPerfect, lastPhysics]);
+
+    return {
+        analyzeFrame,
+        angle,
+        state,
+        feedback,
+        isPerfect,
+        status,
+        guidance,
+        lastPhysics
+    };
 }

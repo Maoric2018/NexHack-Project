@@ -13,13 +13,17 @@ interface MPResults {
     poseWorldLandmarks?: { x: number; y: number; z: number; visibility: number }[];
 }
 
+import { PhysicsResult } from '@/lib/physics';
+
 interface PosePipelineProps {
     mode: 'SCAN' | 'TRAIN';
-    onShot?: (isPerfect: boolean) => void;
+    onShot?: (isPerfect: boolean, elbowAngle: number, feedback: string, physics?: PhysicsResult) => void;
     onLog?: (msg: string, level: 'info' | 'success' | 'warning' | 'error') => void;
+    onStreamReady?: (stream: MediaStream) => void;
+    onLandmarksUpdate?: (shoulder: { x: number; y: number }, wrist: { x: number; y: number }) => void;
 }
 
-export function PosePipeline({ mode, onShot, onLog }: PosePipelineProps) {
+export function PosePipeline({ mode, onShot, onLog, onStreamReady, onLandmarksUpdate }: PosePipelineProps) {
     const [scriptLoaded, setScriptLoaded] = useState(false);
     const [videoReady, setVideoReady] = useState(false);
 
@@ -29,7 +33,7 @@ export function PosePipeline({ mode, onShot, onLog }: PosePipelineProps) {
     const poseRef = useRef<any>(null);
     const loopStartedRef = useRef(false);
 
-    const { analyzeFrame, angle, state, feedback, isPerfect, status, guidance } = useShotAnalysis();
+    const { analyzeFrame, angle, state, feedback, isPerfect, status, guidance, lastPhysics } = useShotAnalysis();
     const prevState = useRef(state);
 
     // Stable Log Reference
@@ -44,11 +48,15 @@ export function PosePipeline({ mode, onShot, onLog }: PosePipelineProps) {
     // Shot Event Listener
     useEffect(() => {
         if (onShot && prevState.current !== 'RELEASE' && state === 'RELEASE') {
-            onShot(isPerfect);
+            onShot(isPerfect, angle, feedback, lastPhysics);
+
+            if (lastPhysics) {
+                log(`Physics: ${lastPhysics.releaseVelocity.toFixed(1)}m/s @ ${lastPhysics.releaseAngle}°`, 'success');
+            }
             log(`Shot Detected: ${isPerfect ? 'Perfect' : 'Flaw'}`, isPerfect ? 'success' : 'warning');
         }
         prevState.current = state;
-    }, [state, isPerfect, onShot, log]);
+    }, [state, isPerfect, onShot, log, lastPhysics, angle, feedback]);
 
     // MediaPipe Results Handler
     const onResults = useCallback((results: MPResults) => {
@@ -70,8 +78,16 @@ export function PosePipeline({ mode, onShot, onLog }: PosePipelineProps) {
         drawSkeleton(ctx, points);
         analyzeFrame(points);
 
+        // Pass landmarks for physics calculations
+        if (onLandmarksUpdate && points.length >= 17) {
+            onLandmarksUpdate(
+                { x: points[12].x, y: points[12].y }, // Right shoulder
+                { x: points[16].x, y: points[16].y }  // Right wrist
+            );
+        }
+
         ctx.restore();
-    }, [analyzeFrame]);
+    }, [analyzeFrame, onLandmarksUpdate]);
 
     // Tracking Loop
     const startLoop = useCallback(() => {
@@ -112,18 +128,28 @@ export function PosePipeline({ mode, onShot, onLog }: PosePipelineProps) {
         loop();
     }, [log]);
 
-    // Initialize MediaPipe when script loads
+    // Initialize MediaPipe when script loads - WITH GUARD TO PREVENT RE-INIT
+    const poseInitializedRef = useRef(false);
+
     useEffect(() => {
         if (!scriptLoaded || typeof window === 'undefined' || !(window as any).Pose) return;
 
+        // CRITICAL: Prevent re-initialization
+        if (poseInitializedRef.current || poseRef.current) {
+            console.log("[MediaPipe] Already initialized, skipping");
+            return;
+        }
+
+        poseInitializedRef.current = true;
         log("Initializing MediaPipe...", 'info');
+
         const Pose = (window as any).Pose;
         const pose = new Pose({
             locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
         });
 
         pose.setOptions({
-            modelComplexity: 1,
+            modelComplexity: 0, // Lite model for speed + Smoothing handles jitter
             smoothLandmarks: true,
             enableSegmentation: false,
             minDetectionConfidence: 0.5,
@@ -137,6 +163,7 @@ export function PosePipeline({ mode, onShot, onLog }: PosePipelineProps) {
         return () => {
             pose.close();
             poseRef.current = null;
+            poseInitializedRef.current = false;
         };
     }, [scriptLoaded, onResults, log]);
 
@@ -172,12 +199,15 @@ export function PosePipeline({ mode, onShot, onLog }: PosePipelineProps) {
                 onError={() => log("Failed to load MediaPipe script", 'error')}
             />
 
-            <LiveKitFeed onVideoReady={(v) => {
-                console.log("[Feed] Video ready callback");
-                videoRef.current = v;
-                setVideoReady(true);
-                log("LiveKit Video Ready", 'success');
-            }} />
+            <LiveKitFeed
+                onVideoReady={(v) => {
+                    console.log("[Feed] Video ready callback");
+                    videoRef.current = v;
+                    setVideoReady(true);
+                    log("LiveKit Video Ready", 'success');
+                }}
+                onStreamReady={onStreamReady}
+            />
 
             <canvas
                 ref={canvasRef}
