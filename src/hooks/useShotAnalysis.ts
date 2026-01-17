@@ -32,7 +32,7 @@ export function useShotAnalysis() {
     const [lastMotionData, setLastMotionData] = useState<Point[][] | undefined>(undefined);
     const [lastShotMetrics, setLastShotMetrics] = useState<ShotMetrics | undefined>(undefined);
 
-    // Simple frame history
+    // Frame history
     const framesRef = useRef<{ time: number, angle: number, wristY: number, landmarks: Point[] }[]>([]);
     const lastTriggerTimeRef = useRef<number>(0);
     const wasInSetRef = useRef<boolean>(false);
@@ -42,14 +42,23 @@ export function useShotAnalysis() {
     const analyzeFrame = useCallback((landmarks: Point[]) => {
         if (!landmarks || landmarks.length < 33) return;
         const now = Date.now();
-
         const vis = (p: Point) => p?.visibility ?? 0;
 
-        // Get both arms
+        // 1. ANATOMY & ORIENTATION
         const rShoulder = landmarks[12], rElbow = landmarks[14], rWrist = landmarks[16];
         const lShoulder = landmarks[11], lElbow = landmarks[13], lWrist = landmarks[15];
+        const nose = landmarks[0];
 
-        // Auto-detect dominant arm (pick the more visible one)
+        // Detect Side Profile vs Front
+        // If shoulder distance (x-axis) is small relative to arm length -> Side View
+        const shoulderDist = Math.abs(rShoulder.x - lShoulder.x);
+        const refArmLen = Math.abs(rShoulder.y - rElbow.y) + Math.abs(rElbow.y - rWrist.y); // Vertical approx
+        const isSideView = shoulderDist < (refArmLen * 0.4);
+
+        // Determine shooting arm
+        // - Front view: Dominant (more visible)
+        // - Side view: The "forward" arm (one with Wrist X in direction of gaze? or just most visible)
+        // We'll stick to visibility confidence for now, but side view often occludes one.
         const rConf = (vis(rShoulder) + vis(rElbow) + vis(rWrist)) / 3;
         const lConf = (vis(lShoulder) + vis(lElbow) + vis(lWrist)) / 3;
         const useRight = rConf >= lConf;
@@ -58,131 +67,174 @@ export function useShotAnalysis() {
         const elbow = useRight ? rElbow : lElbow;
         const wrist = useRight ? rWrist : lWrist;
 
-        // TRACKING CHECK - Very relaxed
-        if (vis(elbow) < 0.2 || vis(wrist) < 0.2) {
+        // Tracking Valid Check
+        if (vis(elbow) < 0.3 || vis(wrist) < 0.3) {
             setStatus('SEARCHING');
-            setFeedback("SHOW YOUR ARM");
+            setFeedback(isSideView ? "SIDE VIEW DETECTED" : "SHOW SHOOTING ARM");
             return;
         }
-        setStatus('LOCKED');
+        setStatus(isSideView ? 'TRACKING' : 'LOCKED'); // Just visual feedback variance
 
-        // Calculate current elbow angle
+        // Calculate Angle
         const rawAngle = calculateAngle(shoulder, elbow, wrist);
         const currentWristY = wrist.y;
 
-        // Store frame
+        // Store Frame
         framesRef.current.push({ time: now, angle: rawAngle, wristY: currentWristY, landmarks });
-        if (framesRef.current.length > 90) framesRef.current.shift(); // 3 sec @ 30fps
+        if (framesRef.current.length > 90) framesRef.current.shift();
 
-        // Smooth angle for display
+        // Smooth Angle
         const recentFrames = framesRef.current.slice(-3);
         const smoothedAngle = Math.round(recentFrames.reduce((a, b) => a + b.angle, 0) / recentFrames.length);
         setAngle(smoothedAngle);
 
-        // COOLDOWN CHECK (1 second between shots)
-        if (now - lastTriggerTimeRef.current < 1000) {
-            setFeedback("NICE! 🔥");
-            return;
-        }
+        // COOLDOWN
+        if (now - lastTriggerTimeRef.current < 1500) return;
 
-        // ========== SIMPLE DETECTION LOGIC ==========
-        // 
-        // Shot = arm goes from bent (< 100°) to extended (> 120°)
-        // That's it. Simple.
-        //
+        // 2. DETECTION LOGIC (Robust)
+        const SET_THRESHOLD = isSideView ? 110 : 100; // Allow wider set in side view
+        const RELEASE_THRESHOLD = 135; // Must extend arm significantly
 
-        const SET_THRESHOLD = 100;      // Arm bent = less than this
-        const RELEASE_THRESHOLD = 120;  // Arm extended = more than this
-
-        // Phase 1: Detect when arm is cocked/bent
+        // PHASE 1: SET (Cocked Arm)
         if (rawAngle < SET_THRESHOLD) {
             if (!wasInSetRef.current) {
-                // Just entered set position
-                wasInSetRef.current = true;
-                setStartTimeRef.current = now;
-                setAngleRef.current = rawAngle;
-                setState('SET');
-                setFeedback("READY... 🎯");
+                // VALIDATE SET: Wrist shouldn't be too low (not by hip)
+                if (wrist.y < shoulder.y + 0.2) { // Remember Y is inverted (0 is top), so < means higher or slightly below shoulder
+                    wasInSetRef.current = true;
+                    setStartTimeRef.current = now;
+                    setAngleRef.current = rawAngle;
+                    setState('SET');
+                    setFeedback("READY... 🎯");
+                }
             }
         }
 
-        // Phase 2: Detect release (arm extends)
+        // PHASE 2: RELEASE (Extension)
         if (wasInSetRef.current && rawAngle > RELEASE_THRESHOLD) {
-            // SHOT DETECTED!
-            const shotDuration = now - setStartTimeRef.current;
+            const setDuration = now - setStartTimeRef.current;
 
-            // Only count if the set phase was at least 100ms (not just noise)
-            if (shotDuration > 100 && shotDuration < 2000) {
-                lastTriggerTimeRef.current = now;
+            // FILTER: Timing must be shot-like (100ms - 1.5s)
+            if (setDuration > 100 && setDuration < 1500) {
+                // FILTER: CRITICAL - Wrist must end HIGH (above head level or at least shoulder)
+                // Inverted Y: Lower value is higher on screen
+                const isHighRelease = wrist.y < (nose.y + 0.1);
 
-                // Get motion data from last second
-                const shotFrames = framesRef.current.filter(f => now - f.time < 1500);
-                const motionData = shotFrames.map(f => f.landmarks);
+                if (isHighRelease) {
+                    // === SHOT CONFIRMED ===
+                    lastTriggerTimeRef.current = now;
 
-                // Calculate metrics
-                const extensionSpeed = (rawAngle - setAngleRef.current) / (shotDuration / 1000);
-                const firstWristY = shotFrames.length > 0 ? shotFrames[0].wristY : currentWristY;
-                const verticalLift = firstWristY - currentWristY; // Positive = moved up
+                    // 3. FLAW ANALYSIS & CRITIQUE
+                    const shotFrames = framesRef.current.filter(f => now - f.time < 1500);
+                    const motionData = shotFrames.map(f => f.landmarks);
 
-                // Form quality
-                const formScore = calculateShotQuality(setAngleRef.current, rawAngle);
-                const isGoodForm = formScore >= 60;
+                    // Metrics
+                    const extensionSpeed = (rawAngle - setAngleRef.current) / (setDuration / 1000);
+                    const startWristY = shotFrames[0]?.wristY || currentWristY;
+                    const verticalLift = startWristY - currentWristY; // Positive = up
 
-                // Build metrics
-                const shotMetrics: ShotMetrics = {
-                    loadTime: 0,
-                    releaseTime: shotDuration,
-                    setAngle: Math.round(setAngleRef.current),
-                    releaseAngle: Math.round(rawAngle),
-                    armExtensionSpeed: Math.round(extensionSpeed),
-                    wristVelocity: verticalLift / (shotDuration / 1000),
-                    verticalLift: Math.round(verticalLift * 100),
-                    releaseHeight: Math.round((1 - currentWristY) * 100),
-                    formScore: Math.round(formScore),
-                    isGoodForm
-                };
+                    // -- Critique Logic --
+                    let flaw: 'low_arc' | 'short' | 'long' | 'left' | 'right' | undefined;
+                    let critiqueType: 'perfect' | 'elbowTuck' | 'tooTight' | 'arc' | 'power' | 'goodShot' = 'goodShot';
 
-                // Physics
-                const estimatedReleaseHeight = 1.5 + (1 - currentWristY) * 0.7;
-                const dx = wrist.x - shoulder.x;
-                const dy = shoulder.y - wrist.y;
-                const releaseAngleDeg = Math.max(30, Math.min(60, Math.atan2(dy, Math.abs(dx)) * (180 / Math.PI)));
-                const estimatedVelocity = Math.max(5, Math.min(10, 5 + extensionSpeed / 150));
+                    // Check 1: Elbow Flare (if front view)
+                    // If elbow X is far from shoulder X
+                    if (!isSideView && Math.abs(elbow.x - shoulder.x) > 0.15) {
+                        flaw = Math.random() > 0.5 ? 'left' : 'right'; // Flare causes lateral miss
+                        critiqueType = 'elbowTuck';
+                    }
+                    // Check 2: Stiffness/Tightness (Set angle too small)
+                    else if (setAngleRef.current < 45) {
+                        flaw = 'short'; // constrained motion
+                        critiqueType = 'tooTight';
+                    }
+                    // Check 3: Power/Extension Speed
+                    else if (extensionSpeed < 150) {
+                        flaw = 'short';
+                        critiqueType = 'power';
+                    }
+                    // Check 4: Arc (Release Angle approximation)
+                    // If wrist y is barely above nose, likely flat shot
+                    else if (wrist.y > nose.y - 0.05) {
+                        flaw = 'low_arc';
+                        critiqueType = 'arc';
+                    }
+                    // Check 5: Perfect?
+                    // Good speed, good height, no flare
+                    else if (extensionSpeed > 300 && verticalLift > 0.15) {
+                        critiqueType = 'perfect';
+                    }
 
-                const physics = calculateTrajectory(estimatedReleaseHeight, releaseAngleDeg, estimatedVelocity);
+                    const isMade = critiqueType === 'perfect' || critiqueType === 'goodShot';
+                    const formScore = isMade ? (critiqueType === 'perfect' ? 95 : 85) : 60; // Simplified scoring
 
-                // Update all state
-                setIsPerfect(isGoodForm);
-                setFeedback(isGoodForm ? "SPLASH! 💦" : "GOOD SHOT!");
-                setState('RELEASE');
-                audioCoach.speak(isGoodForm ? 'perfect' : 'goodShot');
+                    // Build Metrics
+                    const shotMetrics: ShotMetrics = {
+                        loadTime: 0,
+                        releaseTime: setDuration,
+                        setAngle: Math.round(setAngleRef.current),
+                        releaseAngle: Math.round(rawAngle),
+                        armExtensionSpeed: Math.round(extensionSpeed),
+                        wristVelocity: verticalLift / (setDuration / 1000),
+                        verticalLift: Math.round(verticalLift * 100),
+                        releaseHeight: Math.round((1 - currentWristY) * 100),
+                        formScore,
+                        isGoodForm: isMade
+                    };
 
-                setLastPhysics(physics);
-                setLastMotionData(motionData);
-                setLastShotMetrics(shotMetrics);
-                setMetrics({ velocity: shotMetrics.wristVelocity, acceleration: extensionSpeed });
+                    // Physics with Flaw
+                    // Estimate velocity & angle from motion
+                    const estVel = Math.max(5, Math.min(11, 5 + extensionSpeed / 120));
+                    const estAng = Math.max(40, Math.min(65, 45 + (verticalLift * 40)));
 
-                // Reset for next shot
-                setTimeout(() => {
+                    const physics = calculateTrajectory(
+                        2.0, // approx release height relative to floor
+                        estAng,
+                        estVel,
+                        isMade,
+                        flaw
+                    );
+
+                    // Update State
+                    setIsPerfect(isMade);
+                    setFeedback(isMade ? (critiqueType === 'perfect' ? "PERFECT! 🏀" : "NICE SHOT") : "ADJUST FORM");
+                    setState('RELEASE');
+
+                    // 🗣️ AUDIO CRITIQUE
+                    audioCoach.speak(critiqueType);
+
+                    setLastPhysics(physics);
+                    setLastMotionData(motionData);
+                    setLastShotMetrics(shotMetrics);
+                    setMetrics({ velocity: shotMetrics.wristVelocity, acceleration: extensionSpeed });
+
+                    setTimeout(() => {
+                        setState('IDLE');
+                        setFeedback("READY");
+                    }, 500);
+                } else {
+                    // Rejected: Not high enough (false positive extension like a handshake)
+                    wasInSetRef.current = false;
                     setState('IDLE');
-                    setFeedback("READY");
-                }, 500);
+                    setFeedback("REACH HIGHER");
+                }
+            } else {
+                wasInSetRef.current = false; // Too fast/slow
             }
-
-            // Reset set phase
-            wasInSetRef.current = false;
         }
 
-        // Timeout: If in set for too long, reset
+        // Timeout Reset
         if (wasInSetRef.current && now - setStartTimeRef.current > 3000) {
             wasInSetRef.current = false;
             setState('IDLE');
             setFeedback("READY");
         }
 
-        // Show current state feedback
+        // Pre-Set Feedback
         if (!wasInSetRef.current && rawAngle > SET_THRESHOLD && rawAngle < RELEASE_THRESHOLD) {
-            setFeedback(`${Math.round(rawAngle)}° - Bend more`);
+            // Only show if wrist is somewhat high (upright stance)
+            if (wrist.y < shoulder.y + 0.3) {
+                setFeedback(`${Math.round(rawAngle)}° - Bend more`);
+            }
         }
 
     }, []);

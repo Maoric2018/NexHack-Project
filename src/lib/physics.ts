@@ -50,49 +50,112 @@ export function estimateReleaseVelocity(elbowAngle: number): number {
  * y(t) = y₀ + v₀·sin(θ)·t - ½·g·t²
  * x(t) = x₀ + v₀·cos(θ)·t
  */
+/**
+ * Calculate ball trajectory using projectile motion equations
+ * NOW HANDLES MISSES REALISTICALLY
+ */
 export function calculateTrajectory(
     releaseHeight: number,
     releaseAngle: number,
-    releaseVelocity: number
+    releaseVelocity: number,
+    isMade: boolean = true,
+    flawType?: 'low_arc' | 'high_arc' | 'left' | 'right' | 'short' | 'long'
 ): PhysicsResult {
     const angleRad = releaseAngle * (Math.PI / 180);
-    const v0x = releaseVelocity * Math.cos(angleRad);
-    const v0y = releaseVelocity * Math.sin(angleRad);
-
-    // Solve for time when ball reaches rim height at rim distance
-    // This is a quadratic: -½gt² + v0y·t + (y0 - yrim) = 0
-    // We'll use the positive root (ascending arc hits rim)
-
+    let v0x = releaseVelocity * Math.cos(angleRad);
+    let v0y = releaseVelocity * Math.sin(angleRad);
     const y0 = releaseHeight;
-    const yFinal = RIM_HEIGHT;
-    const xFinal = FREE_THROW_DISTANCE;
 
-    // Time to reach rim distance
-    const timeToRim = xFinal / v0x;
+    // TARGET: The interaction point (rim or backboard)
+    const RIM_HEIGHT = 3.05;
+    const DISTANCE = 4.19;
 
-    // Height at rim
-    const heightAtRim = y0 + v0y * timeToRim - 0.5 * GRAVITY * timeToRim * timeToRim;
+    // IF MISSING: Adjust velocity/angle to force a miss
+    if (!isMade) {
+        // Randomize slight deviation for natural feel
+        const noise = (Math.random() - 0.5) * 0.5;
 
-    // Calculate arc height (max y)
-    const timeToApex = v0y / GRAVITY;
-    const arcHeight = y0 + v0y * timeToApex - 0.5 * GRAVITY * timeToApex * timeToApex;
+        switch (flawType) {
+            case 'short':
+            case 'low_arc':
+                // Reduce velocity -> Airball short or front rim
+                v0x *= 0.85;
+                v0y *= 0.9;
+                break;
+            case 'long':
+            case 'high_arc':
+                // Increase velocity -> Back rim or backboard
+                v0x *= 1.15;
+                break;
+            case 'left':
+                // Add lateral velocity (Z-axis in our 2D-to-3D mapping, but handled as X deviation in trajectory)
+                // For simplicity in this 2D-focused math, we'll simulate "miss" by just not reaching correct depth
+                // or returning a specialized 'miss' path if 3D scene supports it.
+                // Here we just make it go weirdly short/long to show it's not "true"
+                v0x *= 0.95 + noise;
+                break;
+            default:
+                // Generic miss (rim out)
+                v0x *= (Math.random() > 0.5 ? 1.05 : 0.95);
+        }
+    } else {
+        // AUTO-CORRECT FOR MAKE: 
+        // If it's a made shot, we define the trajectory to PASS THROUGH the hoop center
+        // We retroactively fit the velocity to ensure it hits (0, 3.05, 4.19)
+
+        // Solve for v required to hit (DISTANCE, RIM_HEIGHT) given angle
+        // y = x tan(theta) - (g x^2) / (2 v^2 cos^2(theta))
+        // v^2 = (g x^2) / (2 cos^2(theta) * (x tan(theta) - y + y0))
+
+        const g = GRAVITY;
+        const x = DISTANCE;
+        const y = RIM_HEIGHT;
+        const tanTheta = Math.tan(angleRad);
+        const cosTheta = Math.cos(angleRad);
+
+        const requiredVelocitySquared = (g * x * x) / (2 * cosTheta * cosTheta * (x * tanTheta - (y - y0)));
+
+        if (requiredVelocitySquared > 0) {
+            const requiredVelocity = Math.sqrt(requiredVelocitySquared);
+            // Use this exact velocity for the "swish"
+            v0x = requiredVelocity * Math.cos(angleRad);
+            v0y = requiredVelocity * Math.sin(angleRad);
+        }
+    }
+
+    // Calculate time to reach the distance (plus a bit for follow through)
+    const timeToTarget = DISTANCE / v0x;
+    const totalTime = timeToTarget * 1.2; // Continue past rim
 
     // Generate trajectory points
     const trajectoryPoints: { x: number; y: number; z: number }[] = [];
-    const numPoints = 50;
+    const numPoints = 60;
 
     for (let i = 0; i <= numPoints; i++) {
-        const t = (timeToRim * 1.1) * (i / numPoints); // Go slightly past rim
-        const x = v0x * t;
+        const t = totalTime * (i / numPoints);
+
+        // Standard projectile motion
+        const z = v0x * t; // Forward distance
         const y = y0 + v0y * t - 0.5 * GRAVITY * t * t;
-        trajectoryPoints.push({ x: 0, y, z: x }); // z is forward in our 3D scene
+
+        // Lateral deviation (x-axis)
+        let x = 0;
+        if (!isMade && flawType === 'left') x = -0.5 * (t / totalTime);
+        if (!isMade && flawType === 'right') x = 0.5 * (t / totalTime);
+
+        trajectoryPoints.push({ x, y, z });
     }
+
+    // Recalculate derived metrics based on the utilized velocity
+    const finalVelocity = Math.sqrt(v0x * v0x + v0y * v0y);
+    const timeToApex = v0y / GRAVITY;
+    const arcHeight = y0 + v0y * timeToApex - 0.5 * GRAVITY * timeToApex * timeToApex;
 
     return {
         releaseAngle,
-        releaseVelocity,
+        releaseVelocity: finalVelocity,
         arcHeight,
-        timeOfFlight: timeToRim,
+        timeOfFlight: timeToTarget,
         trajectoryPoints
     };
 }

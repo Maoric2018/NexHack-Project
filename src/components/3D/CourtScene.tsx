@@ -181,32 +181,52 @@ function HologramPlayer({ motionData, isPlaying, frameIndex }: { motionData?: an
 }
 
 // ------------------------------------------------------------------
-// ANIMATED SHOOTING BALL (Parabolic Arc)
+// ANIMATED SHOOTING BALL (Real Physics Trajectory)
 // ------------------------------------------------------------------
-function ShootingBall({ isPlaying, frameIndex, totalFrames }: { isPlaying: boolean, frameIndex: number, totalFrames: number }) {
+function ShootingBall({ isPlaying, frameIndex, totalFrames, trajectory }: {
+    isPlaying: boolean,
+    frameIndex: number,
+    totalFrames: number,
+    trajectory?: { x: number; y: number; z: number }[]
+}) {
     const meshRef = useRef<THREE.Mesh>(null);
 
-    // Calculate ball position along parabolic trajectory
+    // If no real physics trajectory, don't render or fallback?
+    // User requested "fix inaccurate trajectory", so we rely on the physics one.
+    if (!trajectory || trajectory.length === 0) return null;
+
+    // Map frame progress to trajectory progress
+    // Assume the shot clip covers the full flight? 
+    // Usually clip is human motion. Ball keeps flying.
+    // We'll loop the ball flight to match the player loop duration for visual sync.
     const progress = totalFrames > 0 ? (frameIndex / totalFrames) : 0;
 
-    // Start position (player's hand) -> End position (hoop)
-    const startX = 0, startY = 2.5, startZ = 2;
-    const endX = 0, endY = 3.05, endZ = 6.5; // Hoop position
+    // Get current point indices
+    const scaledIndex = progress * (trajectory.length - 1);
+    const idx = Math.floor(scaledIndex);
+    const nextIdx = Math.min(idx + 1, trajectory.length - 1);
+    const alpha = scaledIndex - idx;
 
-    // Parabolic arc
-    const arcHeight = 2.5;
-    const t = Math.min(progress * 2, 1); // Ball travels in first half of clip
+    // Interpolate position
+    const p1 = trajectory[idx];
+    const p2 = trajectory[nextIdx];
 
-    const x = startX + (endX - startX) * t;
-    const z = startZ + (endZ - startZ) * t;
-    // Parabolic y: starts at startY, peaks at startY + arcHeight, ends at endY
-    const y = startY + (endY - startY) * t + arcHeight * Math.sin(t * Math.PI);
+    // Player Group Offset (from CourtScene structure)
+    // The player group is at [0, 0, 2]
+    // The physics trajectory Z is "forward distance" from release point.
+    // We add this to the player's Z.
+    const playerZ = 2; // Player base Z
+    const playerY = 0; // Player base Y (feet)
+
+    const x = p1.x + (p2.x - p1.x) * alpha;
+    const y = (p1.y + (p2.y - p1.y) * alpha) + playerY;
+    const z = (p1.z + (p2.z - p1.z) * alpha) + playerZ;
 
     // Rotation: ball spins
     const rotX = frameIndex * 0.3;
     const rotZ = frameIndex * 0.2;
 
-    if (!isPlaying || t >= 1) return null;
+    if (!isPlaying) return null;
 
     return (
         <mesh ref={meshRef} position={[x, y, z]} rotation={[rotX, 0, rotZ]}>
@@ -253,9 +273,9 @@ function PlaybackController({ motionData, isPlaying, onFrameUpdate }: {
 // ------------------------------------------------------------------
 // MAIN SCENE
 // ------------------------------------------------------------------
-interface CourtSceneProps {
+export interface CourtSceneProps {
     physics?: PhysicsResult;
-    motionData?: any[][];
+    motionData?: any[][]; // Array of landmarks for each frame
     isPlaying: boolean;
 }
 
@@ -294,6 +314,7 @@ export function CourtScene({ physics, motionData, isPlaying }: CourtSceneProps) 
                         isPlaying={isPlaying}
                         frameIndex={frameIndex}
                         totalFrames={motionData?.length || 30}
+                        trajectory={physics?.trajectoryPoints}
                     />
                 </group>
 
