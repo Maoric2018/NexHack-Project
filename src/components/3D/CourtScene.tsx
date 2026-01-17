@@ -211,6 +211,8 @@ function ShootingBall({ isPlaying, frameIndex, totalFrames, trajectory }: {
     const p1 = trajectory[idx];
     const p2 = trajectory[nextIdx];
 
+    if (!p1 || !p2) return null;
+
     // Player Group Offset (from CourtScene structure)
     // The player group is at [0, 0, 2]
     // The physics trajectory Z is "forward distance" from release point.

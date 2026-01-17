@@ -68,7 +68,7 @@ export function calculateTrajectory(
 
     // TARGET: The interaction point (rim or backboard)
     const RIM_HEIGHT = 3.05;
-    const DISTANCE = 4.19;
+    const DISTANCE = 5.5; // Adjusted to match 3D specific Court Geometry (7.5m rim - 2m player)
 
     // IF MISSING: Adjust velocity/angle to force a miss
     if (!isMade) {
