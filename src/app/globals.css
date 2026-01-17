@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --color-neon-cyan: #00F0FF;
+  --color-neon-magenta: #FF003C;
+  --color-neon-green: #00FF9D;
+  --color-neon-yellow: #FFD600;
+  
+  --color-iron-dark: #050510;
+  --color-iron-card: #0A0A1F;
+  
+  --font-rajdhani: var(--font-rajdhani);
+  --font-orbitron: var(--font-orbitron);
+}
+
+:root {
+  --background: #050510;
+  --foreground: #E0E0E0;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-rajdhani), sans-serif;
+}
+
+/* Utilities */
+.glass-panel {
+    background: rgba(10, 10, 31, 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+}
+
+.text-glow {
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+.text-glow-red {
+    text-shadow: 0 0 10px rgba(255, 0, 60, 0.5);
+}
