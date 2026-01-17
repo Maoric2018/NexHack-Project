@@ -103,19 +103,41 @@ function HologramPlayer({ motionData, isPlaying, frameIndex }: { motionData?: an
 
     return (
         <group ref={groupRef} position={[0, 0, 2]}>
-            {/* JOINTS */}
+            {/* HEAD (nose/face area) */}
+            {(() => {
+                const nose = getPos(0);
+                if (!nose) return null;
+                return (
+                    <mesh position={nose}>
+                        <sphereGeometry args={[0.15, 24, 24]} />
+                        <meshStandardMaterial
+                            color="#00F0FF"
+                            emissive="#00F0FF"
+                            emissiveIntensity={0.8}
+                            transparent
+                            opacity={0.9}
+                        />
+                    </mesh>
+                );
+            })()}
+
+            {/* GLOWING JOINTS */}
             {[11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28].map(idx => {
                 const pos = getPos(idx);
                 if (!pos) return null;
                 return (
                     <mesh key={idx} position={pos}>
-                        <sphereGeometry args={[0.08, 16, 16]} />
-                        <meshBasicMaterial color="white" />
+                        <sphereGeometry args={[0.1, 16, 16]} />
+                        <meshStandardMaterial
+                            color="#00F0FF"
+                            emissive="#00F0FF"
+                            emissiveIntensity={1.2}
+                        />
                     </mesh>
                 )
             })}
 
-            {/* BONES */}
+            {/* GLOWING BONES */}
             {connections.map(([a, b], i) => {
                 const p1 = getPos(a);
                 const p2 = getPos(b);
@@ -130,17 +152,28 @@ function HologramPlayer({ motionData, isPlaying, frameIndex }: { motionData?: an
 
                 return (
                     <mesh key={i} position={mid} quaternion={quaternion}>
-                        <cylinderGeometry args={[0.04, 0.04, dist, 8]} />
-                        <meshBasicMaterial color="#00F0FF" transparent opacity={0.6} />
+                        <cylinderGeometry args={[0.05, 0.05, dist, 12]} />
+                        <meshStandardMaterial
+                            color="#00F0FF"
+                            emissive="#0088FF"
+                            emissiveIntensity={0.6}
+                            transparent
+                            opacity={0.85}
+                        />
                     </mesh>
                 )
             })}
 
-            {/* BASKETBALL (Follows Wrist) */}
+            {/* BASKETBALL (Glowing Orange) */}
             {wristPos && (
                 <mesh position={wristPos}>
-                    <sphereGeometry args={[0.12, 24, 24]} />
-                    <meshStandardMaterial color="#FF6B00" roughness={0.6} />
+                    <sphereGeometry args={[0.14, 24, 24]} />
+                    <meshStandardMaterial
+                        color="#FF6B00"
+                        emissive="#FF4500"
+                        emissiveIntensity={0.5}
+                        roughness={0.4}
+                    />
                 </mesh>
             )}
         </group>

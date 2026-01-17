@@ -1,42 +1,55 @@
 import { useState, useCallback, useRef } from 'react';
 import { Point, calculateAngle } from '@/lib/poseUtils';
 import { audioCoach } from '@/lib/audioFeedback';
-import { calculateTrajectory, PhysicsResult, calculateReleaseAngle, estimateReleaseVelocity } from '@/lib/physics';
+import { PhysicsResult, calculateTrajectory, calculateShotQuality } from '@/lib/physics';
 
 type ShotState = 'IDLE' | 'SET' | 'RELEASE';
 type TrackingStatus = 'SEARCHING' | 'TRACKING' | 'LOCKED';
 
+// Rich metrics for each shot
+export interface ShotMetrics {
+    loadTime: number;
+    releaseTime: number;
+    setAngle: number;
+    releaseAngle: number;
+    armExtensionSpeed: number;
+    wristVelocity: number;
+    verticalLift: number;
+    releaseHeight: number;
+    formScore: number;
+    isGoodForm: boolean;
+}
+
 export function useShotAnalysis() {
-    // Existing state declarations (needed for setters used in new analyzeFrame)
     const [state, setState] = useState<ShotState>('IDLE');
     const [feedback, setFeedback] = useState<string>("Get Ready");
     const [angle, setAngle] = useState<number>(0);
     const [isPerfect, setIsPerfect] = useState<boolean>(false);
     const [status, setStatus] = useState<TrackingStatus>('SEARCHING');
-    const [guidance, setGuidance] = useState<string>(""); // Guidance is not explicitly set in new logic, but kept for consistency
-
-    // Physics State
+    const [guidance, setGuidance] = useState<string>("");
     const [lastPhysics, setLastPhysics] = useState<PhysicsResult | undefined>(undefined);
-
-    // Metrics State for Graph
     const [metrics, setMetrics] = useState<{ velocity: number, acceleration: number }>({ velocity: 0, acceleration: 0 });
+    const [lastMotionData, setLastMotionData] = useState<Point[][] | undefined>(undefined);
+    const [lastShotMetrics, setLastShotMetrics] = useState<ShotMetrics | undefined>(undefined);
 
-    // --- NEW STATE & HISTORY ---
-    // Store full landmarks for 3D replay
+    // Simple frame history
     const framesRef = useRef<{ time: number, angle: number, wristY: number, landmarks: Point[] }[]>([]);
     const lastTriggerTimeRef = useRef<number>(0);
-    const COOLDOWN_MS = 1000;
+    const wasInSetRef = useRef<boolean>(false);
+    const setStartTimeRef = useRef<number>(0);
+    const setAngleRef = useRef<number>(0);
 
     const analyzeFrame = useCallback((landmarks: Point[]) => {
         if (!landmarks || landmarks.length < 33) return;
         const now = Date.now();
 
-        // 1. Visibility & Keypoints
         const vis = (p: Point) => p?.visibility ?? 0;
+
+        // Get both arms
         const rShoulder = landmarks[12], rElbow = landmarks[14], rWrist = landmarks[16];
         const lShoulder = landmarks[11], lElbow = landmarks[13], lWrist = landmarks[15];
 
-        // Auto-detect side
+        // Auto-detect dominant arm (pick the more visible one)
         const rConf = (vis(rShoulder) + vis(rElbow) + vis(rWrist)) / 3;
         const lConf = (vis(lShoulder) + vis(lElbow) + vis(lWrist)) / 3;
         const useRight = rConf >= lConf;
@@ -45,91 +58,134 @@ export function useShotAnalysis() {
         const elbow = useRight ? rElbow : lElbow;
         const wrist = useRight ? rWrist : lWrist;
 
-        // Basic Tracking Check (Relaxed for sitting)
-        if (vis(elbow) < 0.3 || vis(wrist) < 0.3) {
+        // TRACKING CHECK - Very relaxed
+        if (vis(elbow) < 0.2 || vis(wrist) < 0.2) {
             setStatus('SEARCHING');
-            setFeedback("LOST TRACKING");
-            setAngle(0);
+            setFeedback("SHOW YOUR ARM");
             return;
         }
         setStatus('LOCKED');
 
-        // 2. Metrics Calculation
+        // Calculate current elbow angle
         const rawAngle = calculateAngle(shoulder, elbow, wrist);
         const currentWristY = wrist.y;
 
-        // Update Buffer (Keep last 2 seconds approx 60 frames)
-        // NOW STORING FULL LANDMARKS
-        framesRef.current.push({ time: now, angle: rawAngle, wristY: currentWristY, landmarks: landmarks });
-        if (framesRef.current.length > 100) framesRef.current.shift(); // Increased buffer size
+        // Store frame
+        framesRef.current.push({ time: now, angle: rawAngle, wristY: currentWristY, landmarks });
+        if (framesRef.current.length > 90) framesRef.current.shift(); // 3 sec @ 30fps
 
-        // Smooth angle for UI
-        const smoothedAngle = Math.round(
-            framesRef.current.slice(-5).reduce((a, b) => a + b.angle, 0) / Math.min(5, framesRef.current.length)
-        );
+        // Smooth angle for display
+        const recentFrames = framesRef.current.slice(-3);
+        const smoothedAngle = Math.round(recentFrames.reduce((a, b) => a + b.angle, 0) / recentFrames.length);
         setAngle(smoothedAngle);
 
-        // 3. SEQUENCE DETECTION ENGINE
-        if (now - lastTriggerTimeRef.current < COOLDOWN_MS) return; // Cooldown
-
-        const currentFrame = framesRef.current[framesRef.current.length - 1];
-
-        if (currentFrame.angle > 135) { // Release
-            // Search backward
-            const lookbackWindow = framesRef.current.filter(f => now - f.time < 600);
-            const setPoint = lookbackWindow.find(f => f.angle < 100);
-
-            if (setPoint) {
-                const verticalTravel = setPoint.wristY - currentFrame.wristY;
-                const isUpward = verticalTravel > 0.05;
-
-                if (isUpward) {
-                    // SHOT DETECTED!
-                    lastTriggerTimeRef.current = now;
-                    setState('RELEASE');
-
-                    // Extract Motion Data (From Set Point - 500ms to Now + 500ms? No, stick to what we have)
-                    // We grab the last 1.5 seconds to capture the full setup and follow through
-                    const shotMotion = framesRef.current
-                        .filter(f => now - f.time < 1500)
-                        .map(f => f.landmarks);
-
-                    // Physics
-                    const dt = (currentFrame.time - setPoint.time) / 1000;
-                    const velocity = verticalTravel / dt;
-                    const isFormPerfect = setPoint.angle > 80 && setPoint.angle < 110;
-
-                    setIsPerfect(isFormPerfect);
-                    setFeedback(isFormPerfect ? "SPLASH! 🎯" : "GOOD EXTENSION");
-                    audioCoach.speak(isFormPerfect ? 'perfect' : 'goodShot');
-
-                    setMetrics({ velocity: velocity, acceleration: velocity / dt });
-                    setLastPhysics({
-                        releaseAngle: currentFrame.angle,
-                        releaseVelocity: velocity * 10,
-                        trajectoryPoints: [],
-                        arcHeight: 0,
-                        timeOfFlight: 0
-                    });
-
-                    // Trigger callback with motion data (via return, managed by Pipeline)
-                    // We attach it to the ephemeral state return effectively, but clearer to just expose it
-
-                    // Reset
-                    setTimeout(() => setState('IDLE'), 500);
-
-                    return { shotMotion }; // Return specialized data for this one frame
-                }
-            }
-        } else if (smoothedAngle < 100) {
-            setState('SET');
-            if (smoothedAngle < 60) setFeedback("TOO TIGHT");
-            else setFeedback("READY");
-        } else {
-            setState('IDLE');
+        // COOLDOWN CHECK (1 second between shots)
+        if (now - lastTriggerTimeRef.current < 1000) {
+            setFeedback("NICE! 🔥");
+            return;
         }
 
-    }, [audioCoach]);
+        // ========== SIMPLE DETECTION LOGIC ==========
+        // 
+        // Shot = arm goes from bent (< 100°) to extended (> 120°)
+        // That's it. Simple.
+        //
+
+        const SET_THRESHOLD = 100;      // Arm bent = less than this
+        const RELEASE_THRESHOLD = 120;  // Arm extended = more than this
+
+        // Phase 1: Detect when arm is cocked/bent
+        if (rawAngle < SET_THRESHOLD) {
+            if (!wasInSetRef.current) {
+                // Just entered set position
+                wasInSetRef.current = true;
+                setStartTimeRef.current = now;
+                setAngleRef.current = rawAngle;
+                setState('SET');
+                setFeedback("READY... 🎯");
+            }
+        }
+
+        // Phase 2: Detect release (arm extends)
+        if (wasInSetRef.current && rawAngle > RELEASE_THRESHOLD) {
+            // SHOT DETECTED!
+            const shotDuration = now - setStartTimeRef.current;
+
+            // Only count if the set phase was at least 100ms (not just noise)
+            if (shotDuration > 100 && shotDuration < 2000) {
+                lastTriggerTimeRef.current = now;
+
+                // Get motion data from last second
+                const shotFrames = framesRef.current.filter(f => now - f.time < 1500);
+                const motionData = shotFrames.map(f => f.landmarks);
+
+                // Calculate metrics
+                const extensionSpeed = (rawAngle - setAngleRef.current) / (shotDuration / 1000);
+                const firstWristY = shotFrames.length > 0 ? shotFrames[0].wristY : currentWristY;
+                const verticalLift = firstWristY - currentWristY; // Positive = moved up
+
+                // Form quality
+                const formScore = calculateShotQuality(setAngleRef.current, rawAngle);
+                const isGoodForm = formScore >= 60;
+
+                // Build metrics
+                const shotMetrics: ShotMetrics = {
+                    loadTime: 0,
+                    releaseTime: shotDuration,
+                    setAngle: Math.round(setAngleRef.current),
+                    releaseAngle: Math.round(rawAngle),
+                    armExtensionSpeed: Math.round(extensionSpeed),
+                    wristVelocity: verticalLift / (shotDuration / 1000),
+                    verticalLift: Math.round(verticalLift * 100),
+                    releaseHeight: Math.round((1 - currentWristY) * 100),
+                    formScore: Math.round(formScore),
+                    isGoodForm
+                };
+
+                // Physics
+                const estimatedReleaseHeight = 1.5 + (1 - currentWristY) * 0.7;
+                const dx = wrist.x - shoulder.x;
+                const dy = shoulder.y - wrist.y;
+                const releaseAngleDeg = Math.max(30, Math.min(60, Math.atan2(dy, Math.abs(dx)) * (180 / Math.PI)));
+                const estimatedVelocity = Math.max(5, Math.min(10, 5 + extensionSpeed / 150));
+
+                const physics = calculateTrajectory(estimatedReleaseHeight, releaseAngleDeg, estimatedVelocity);
+
+                // Update all state
+                setIsPerfect(isGoodForm);
+                setFeedback(isGoodForm ? "SPLASH! 💦" : "GOOD SHOT!");
+                setState('RELEASE');
+                audioCoach.speak(isGoodForm ? 'perfect' : 'goodShot');
+
+                setLastPhysics(physics);
+                setLastMotionData(motionData);
+                setLastShotMetrics(shotMetrics);
+                setMetrics({ velocity: shotMetrics.wristVelocity, acceleration: extensionSpeed });
+
+                // Reset for next shot
+                setTimeout(() => {
+                    setState('IDLE');
+                    setFeedback("READY");
+                }, 500);
+            }
+
+            // Reset set phase
+            wasInSetRef.current = false;
+        }
+
+        // Timeout: If in set for too long, reset
+        if (wasInSetRef.current && now - setStartTimeRef.current > 3000) {
+            wasInSetRef.current = false;
+            setState('IDLE');
+            setFeedback("READY");
+        }
+
+        // Show current state feedback
+        if (!wasInSetRef.current && rawAngle > SET_THRESHOLD && rawAngle < RELEASE_THRESHOLD) {
+            setFeedback(`${Math.round(rawAngle)}° - Bend more`);
+        }
+
+    }, []);
 
     return {
         analyzeFrame,
@@ -140,6 +196,8 @@ export function useShotAnalysis() {
         status,
         guidance,
         lastPhysics,
-        metrics
+        metrics,
+        lastMotionData,
+        lastShotMetrics
     };
 }

@@ -1,5 +1,19 @@
 import { PhysicsResult } from './physics';
 
+// Rich metrics for each shot
+export interface ShotMetrics {
+    loadTime: number;
+    releaseTime: number;
+    setAngle: number;
+    releaseAngle: number;
+    armExtensionSpeed: number;
+    wristVelocity: number;
+    verticalLift: number;
+    releaseHeight: number;
+    formScore: number;
+    isGoodForm: boolean;
+}
+
 // Shot record type for tracking individual shots
 export interface ShotRecord {
     id: number;
@@ -12,6 +26,7 @@ export interface ShotRecord {
     // Motion Capture Data (Array of frames, each frame has 33 landmarks)
     motionData?: { x: number; y: number; z?: number; visibility?: number }[][];
     trajectory?: PhysicsResult;
+    metrics?: ShotMetrics;
 }
 
 // Session data for Film Room

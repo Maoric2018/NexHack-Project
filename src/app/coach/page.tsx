@@ -10,7 +10,7 @@ import { Play, RotateCcw, ScanLine, Loader2, Target, Zap } from "lucide-react";
 import Link from 'next/link';
 import { RealtimeVision } from '@overshoot/sdk';
 import { DebugConsole, useDebugConsole } from "@/components/UI/DebugConsole";
-import { ShotRecord } from '@/lib/shotTypes';
+import { ShotRecord, ShotMetrics } from '@/lib/shotTypes';
 import {
     calculateTrajectory,
     calculateHarshGrade,
@@ -19,6 +19,7 @@ import {
     estimateReleaseVelocity,
     PhysicsResult
 } from '@/lib/physics';
+import { audioCoach } from '@/lib/audioFeedback';
 
 // Dynamic import for 3D
 const CourtScene = dynamic(() => import('@/components/3D/CourtScene').then(m => ({ default: m.CourtScene })), {
@@ -76,17 +77,18 @@ export default function CoachPage() {
     const avgAngle = totalShots > 0 ? Math.round(shots.reduce((s, shot) => s + shot.elbowAngle, 0) / totalShots) : 0;
     const angleStdDev = totalShots > 0 ? standardDeviation(shots.map(s => s.elbowAngle)) : 0;
 
-    // Handle Shot from PosePipeline - NOW WITH PHYSICS & MOTION
-    const handleShot = (isPerfect: boolean, elbowAngle: number, feedback: string, physics?: PhysicsResult, motionData?: any[], videoTimestamp: number = 0) => {
+    // Handle Shot from PosePipeline - WITH PHYSICS, MOTION & METRICS
+    const handleShot = (isPerfect: boolean, elbowAngle: number, feedback: string, physics?: PhysicsResult, motionData?: any[], videoTimestamp: number = 0, metrics?: ShotMetrics) => {
         const newShot: ShotRecord = {
             id: shots.length + 1,
             timestamp: Date.now(),
             elbowAngle,
             isPerfect,
             feedback,
-            trajectory: physics, // Store physics for 3D replay
-            motionData: motionData, // Full motion history
-            videoTimestamp: videoTimestamp // Sync with video
+            trajectory: physics,
+            motionData: motionData,
+            videoTimestamp: videoTimestamp,
+            metrics: metrics
         };
 
         setShots(prev => [...prev, newShot]);
@@ -296,7 +298,10 @@ export default function CoachPage() {
                             )}
                         </ProCard>
 
-                        <ProButton size="lg" className="w-full" onClick={() => setView('COURT')}>
+                        <ProButton size="lg" className="w-full" onClick={() => {
+                            audioCoach.sessionStart();
+                            setView('COURT');
+                        }}>
                             <Zap className="w-5 h-5 mr-2" /> Start
                         </ProButton>
 
@@ -319,13 +324,27 @@ export default function CoachPage() {
                     {/* HUD */}
                     <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-40">
                         <div className="glass-pro rounded-full px-6 py-3 flex items-center gap-6">
-                            <ProgressRing current={perfectShots} total={target} size={60} />
+                            {/* Shot Counter (Primary) */}
                             <div className="text-center">
-                                <div className="text-[10px] text-gray-400 uppercase tracking-widest">Accuracy</div>
-                                <div className={`text-xl font-black ${totalShots > 0 && perfectShots / totalShots > 0.5 ? 'text-pro-green' : 'text-white'}`}>
-                                    {totalShots > 0 ? Math.round((perfectShots / totalShots) * 100) : 0}%
+                                <div className="text-3xl font-black text-white">
+                                    {totalShots + 1}<span className="text-lg text-gray-400">/{target}</span>
+                                </div>
+                                <div className="text-[10px] text-gray-400 uppercase tracking-widest">Shot</div>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="w-px h-10 bg-white/20" />
+
+                            {/* Makes/Accuracy */}
+                            <div className="text-center">
+                                <div className={`text-xl font-black ${perfectShots > 0 ? 'text-pro-green' : 'text-gray-400'}`}>
+                                    {perfectShots}<span className="text-sm text-gray-400"> made</span>
+                                </div>
+                                <div className="text-[10px] text-gray-400 uppercase tracking-widest">
+                                    {totalShots > 0 ? Math.round((perfectShots / totalShots) * 100) : 0}% accuracy
                                 </div>
                             </div>
+
                             <button onClick={handleEndSession} className="bg-pro-red/20 hover:bg-pro-red/30 text-pro-red rounded-full p-3">
                                 <div className="w-4 h-4 bg-pro-red rounded-sm" />
                             </button>
@@ -334,13 +353,6 @@ export default function CoachPage() {
 
                     <div className="absolute top-24 left-1/2 transform -translate-x-1/2 z-40">
                         <StreakBadge streak={streak} />
-                    </div>
-
-                    <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-40">
-                        <div className="glass-pro rounded-2xl px-6 py-3 text-center">
-                            <span className="text-white/60 text-sm">Goal: </span>
-                            <span className="text-white font-bold">{perfectShots}/{target}</span>
-                        </div>
                     </div>
                 </div>
             )}
@@ -402,16 +414,16 @@ export default function CoachPage() {
                                             key={shot.id}
                                             onClick={() => setSelectedShotId(shot.id)}
                                             className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between group border ${selectedShotId === shot.id
-                                                    ? 'bg-pro-blue/20 border-pro-blue text-white shadow-lg shadow-pro-blue/20'
-                                                    : shot.isPerfect
-                                                        ? 'bg-pro-green/5 border-pro-green/30 text-pro-green hover:bg-pro-green/10'
-                                                        : 'bg-red-500/5 border-red-500/20 text-red-400 hover:bg-red-500/10'
+                                                ? 'bg-pro-blue/20 border-pro-blue text-white shadow-lg shadow-pro-blue/20'
+                                                : shot.isPerfect
+                                                    ? 'bg-pro-green/5 border-pro-green/30 text-pro-green hover:bg-pro-green/10'
+                                                    : 'bg-red-500/5 border-red-500/20 text-red-400 hover:bg-red-500/10'
                                                 }`}
                                         >
                                             <div className="flex items-center gap-3">
                                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${shot.isPerfect
-                                                        ? 'bg-pro-green text-black shadow-[0_0_12px_rgba(0,230,118,0.5)]'
-                                                        : 'bg-red-500/30 text-red-300'
+                                                    ? 'bg-pro-green text-black shadow-[0_0_12px_rgba(0,230,118,0.5)]'
+                                                    : 'bg-red-500/30 text-red-300'
                                                     }`}>
                                                     {shot.isPerfect ? '✓' : '✗'}
                                                 </div>
@@ -449,36 +461,101 @@ export default function CoachPage() {
                                     </SplitView>
                                 </Suspense>
 
-                                {/* Shot Analytics Card */}
-                                {(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory : physics) && (
-                                    <ProCard className="grid grid-cols-4 gap-4 text-center py-4">
-                                        {/* Helper to get physics easily */}
-                                        {(() => {
-                                            const p = selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory : physics;
-                                            if (!p) return null;
-                                            return (
-                                                <>
+                                {/* COMPREHENSIVE SHOT ANALYTICS */}
+                                {selectedShotId && (() => {
+                                    const shot = shots.find(s => s.id === selectedShotId);
+                                    const p = shot?.trajectory;
+                                    const m = shot?.metrics;
+                                    if (!shot) return null;
+
+                                    return (
+                                        <div className="space-y-3">
+                                            {/* Physics Row */}
+                                            <ProCard className="p-4">
+                                                <div className="text-[10px] text-gray-500 uppercase mb-3 flex items-center gap-2">
+                                                    <span className="w-2 h-2 rounded-full bg-pro-blue animate-pulse" />
+                                                    BALLISTIC TRAJECTORY
+                                                </div>
+                                                <div className="grid grid-cols-4 gap-4 text-center">
                                                     <div>
-                                                        <div className="text-xl font-mono text-pro-green">{Math.round(p.releaseAngle)}°</div>
-                                                        <div className="text-[10px] text-gray-500 uppercase">Release Angle</div>
+                                                        <div className="text-2xl font-mono text-pro-green">{p ? Math.round(p.releaseAngle) : '--'}°</div>
+                                                        <div className="text-[10px] text-gray-500">RELEASE ANGLE</div>
                                                     </div>
                                                     <div>
-                                                        <div className="text-xl font-mono text-pro-blue">{Math.round(p.releaseVelocity * 10) / 10} m/s</div>
-                                                        <div className="text-[10px] text-gray-500 uppercase">Velocity</div>
+                                                        <div className="text-2xl font-mono text-pro-blue">{p ? (p.releaseVelocity).toFixed(1) : '--'}</div>
+                                                        <div className="text-[10px] text-gray-500">VELOCITY (m/s)</div>
                                                     </div>
                                                     <div>
-                                                        <div className="text-xl font-mono text-orange-400">{Math.round(p.arcHeight * 100) / 100}m</div>
-                                                        <div className="text-[10px] text-gray-500 uppercase">Arc Height</div>
+                                                        <div className="text-2xl font-mono text-orange-400">{p ? p.arcHeight.toFixed(2) : '--'}</div>
+                                                        <div className="text-[10px] text-gray-500">ARC HEIGHT (m)</div>
                                                     </div>
                                                     <div>
-                                                        <div className="text-xl font-mono text-white">{Math.round(p.timeOfFlight * 100) / 100}s</div>
-                                                        <div className="text-[10px] text-gray-500 uppercase">Flight Time</div>
+                                                        <div className="text-2xl font-mono text-white">{p ? p.timeOfFlight.toFixed(2) : '--'}</div>
+                                                        <div className="text-[10px] text-gray-500">FLIGHT TIME (s)</div>
                                                     </div>
-                                                </>
-                                            )
-                                        })()}
-                                    </ProCard>
-                                )}
+                                                </div>
+                                            </ProCard>
+
+                                            {/* Biomechanics Row */}
+                                            {m && (
+                                                <ProCard className="p-4">
+                                                    <div className="text-[10px] text-gray-500 uppercase mb-3 flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full bg-pro-green animate-pulse" />
+                                                        BIOMECHANICS
+                                                    </div>
+                                                    <div className="grid grid-cols-5 gap-3 text-center">
+                                                        <div>
+                                                            <div className="text-lg font-mono text-cyan-400">{m.setAngle}°</div>
+                                                            <div className="text-[9px] text-gray-500">SET ANGLE</div>
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-lg font-mono text-cyan-400">{m.releaseAngle}°</div>
+                                                            <div className="text-[9px] text-gray-500">RELEASE ANGLE</div>
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-lg font-mono text-yellow-400">{m.armExtensionSpeed}</div>
+                                                            <div className="text-[9px] text-gray-500">SPEED (°/s)</div>
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-lg font-mono text-pink-400">{m.verticalLift.toFixed(1)}%</div>
+                                                            <div className="text-[9px] text-gray-500">VERTICAL LIFT</div>
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-lg font-mono text-purple-400">{m.releaseTime}ms</div>
+                                                            <div className="text-[9px] text-gray-500">RELEASE TIME</div>
+                                                        </div>
+                                                    </div>
+                                                </ProCard>
+                                            )}
+
+                                            {/* Form Score Bar */}
+                                            {m && (
+                                                <ProCard className="p-4">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-[10px] text-gray-500 uppercase">FORM QUALITY SCORE</span>
+                                                        <span className={`text-xl font-black ${m.formScore >= 70 ? 'text-pro-green' : m.formScore >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                                            {m.formScore}/100
+                                                        </span>
+                                                    </div>
+                                                    <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
+                                                        <div
+                                                            className={`h-full transition-all duration-500 ${m.formScore >= 70 ? 'bg-gradient-to-r from-pro-green to-emerald-400' :
+                                                                m.formScore >= 40 ? 'bg-gradient-to-r from-yellow-500 to-orange-400' :
+                                                                    'bg-gradient-to-r from-red-500 to-pink-400'
+                                                                }`}
+                                                            style={{ width: `${m.formScore}%` }}
+                                                        />
+                                                    </div>
+                                                    <div className="mt-2 text-[10px] text-gray-400">
+                                                        {m.formScore >= 70 ? '✅ Excellent form - NBA-level mechanics' :
+                                                            m.formScore >= 40 ? '⚠️ Decent form - work on follow-through' :
+                                                                '❌ Poor form - slow down and focus on fundamentals'}
+                                                    </div>
+                                                </ProCard>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </div>
 
