@@ -1,5 +1,5 @@
-import LandingScene from "@/components/Landing/LandingScene";
+import MinimalistLanding from "@/components/Landing/MinimalistLanding";
 
 export default function Home() {
-  return <LandingScene />;
+  return <MinimalistLanding />;
 }

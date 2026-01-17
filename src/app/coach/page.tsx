@@ -230,87 +230,85 @@ export default function CoachPage() {
     useEffect(() => { addLog("System ready.", 'info'); }, [addLog]);
 
     return (
-        <div className="relative w-full h-screen bg-black overflow-hidden flex flex-col font-geist-sans">
+        <div className="relative w-full h-screen bg-black overflow-hidden flex flex-col font-mono text-white selection:bg-cyan-500/30">
             <DebugConsole logs={logs} />
+            <CelebrationOverlay show={showCelebration} grade={sessionGrade as any} onComplete={() => { setShowCelebration(false); handleEndSession(); }} />
 
-            <CelebrationOverlay
-                show={showCelebration}
-                grade={sessionGrade as 'S' | 'A' | 'B' | 'C'}
-                onComplete={() => { setShowCelebration(false); handleEndSession(); }}
-            />
-
-            {/* LOCKER ROOM */}
+            {/* LOCKER ROOM (Calibration) */}
             {view === 'LOCKER_ROOM' && (
-                <div className="flex-1 flex flex-col items-center justify-center p-8 relative z-10 bg-gradient-to-b from-gray-900 to-black">
-                    <div className="max-w-md w-full space-y-6 animate-in fade-in duration-500">
+                <div className="flex-1 flex flex-col items-center justify-center p-8 relative z-10">
+                    <div className="max-w-lg w-full space-y-12 animate-in fade-in duration-500 border-l border-r border-white/10 px-8 py-12 relative">
+                        {/* Corners */}
+                        <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-cyan-500" />
+                        <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-cyan-500" />
+                        <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-cyan-500" />
+                        <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-cyan-500" />
+
                         <div className="text-center space-y-2">
-                            <h1 className="text-4xl font-bold tracking-tight text-white">Form Drill</h1>
-                            <p className="text-gray-500">Biomechanics analysis system</p>
+                            <h2 className="text-xs text-cyan-500 tracking-[0.3em]">INITIALIZATION SEQUENCE</h2>
+                            <h1 className="text-4xl font-light tracking-tighter">SESSION CONFIG</h1>
                         </div>
 
-                        {/* Difficulty */}
-                        <ProCard className="space-y-4">
-                            <div className="flex items-center gap-3">
-                                <Target className="w-5 h-5 text-pro-blue" />
-                                <span className="font-bold text-white">Difficulty</span>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
+                        {/* Difficulty Select */}
+                        <div className="space-y-4">
+                            <div className="text-[10px] text-gray-500 uppercase tracking-widest border-b border-white/10 pb-2">Select Protocol</div>
+                            <div className="grid grid-cols-3 gap-px bg-white/10">
                                 {(['EASY', 'NORMAL', 'PRO'] as Difficulty[]).map(d => (
                                     <button
                                         key={d}
                                         onClick={() => setDifficulty(d)}
-                                        className={`py-3 rounded-xl text-sm font-bold transition-all ${difficulty === d
-                                            ? 'bg-pro-blue text-white'
-                                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                                        className={`py-4 text-xs tracking-widest transition-all ${difficulty === d
+                                            ? 'bg-cyan-500/10 text-cyan-400 box-shadow-[inset_0_0_20px_rgba(0,255,255,0.1)]'
+                                            : 'bg-black hover:bg-white/5 text-gray-500'
                                             }`}
                                     >
-                                        <div>{DIFFICULTY_CONFIG[d].label}</div>
-                                        <div className="text-xs opacity-60 mt-1">{DIFFICULTY_CONFIG[d].target} shots</div>
+                                        [{DIFFICULTY_CONFIG[d].label}]
                                     </button>
                                 ))}
                             </div>
-                        </ProCard>
+                        </div>
 
-                        {/* Scan */}
-                        <ProCard className="space-y-4">
-                            <div className="flex items-center gap-4">
-                                <ScanLine className={`w-6 h-6 ${scanResult ? 'text-pro-green' : 'text-white'}`} />
-                                <div>
-                                    <h3 className="font-bold text-white">Environment</h3>
-                                    <p className="text-xs text-gray-500">Overshoot VLM</p>
-                                </div>
+                        {/* Env Scan */}
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between text-[10px] text-gray-500 uppercase tracking-widest border-b border-white/10 pb-2">
+                                <span>Environment Check</span>
+                                <span className={scanResult ? "text-emerald-500" : "text-yellow-500"}>{scanResult ? "CLEARED" : "PENDING"}</span>
                             </div>
-                            {scanResult ? (
-                                <div className="text-sm bg-pro-green/10 p-3 rounded-lg border border-pro-green/20 text-pro-green">✓ {scanResult}</div>
-                            ) : (
-                                <div className="flex gap-2">
-                                    <ProButton variant="secondary" className="flex-1" onClick={handleScan} isLoading={isScanning}>
-                                        {isScanning ? "Scanning..." : "Scan"}
-                                    </ProButton>
-                                    <ProButton
-                                        variant="ghost"
-                                        className="text-gray-400"
-                                        onClick={() => setScanResult("Skipped - proceed with caution")}
+
+                            {!scanResult ? (
+                                <div className="flex gap-4">
+                                    <button
+                                        onClick={handleScan}
+                                        disabled={isScanning}
+                                        className="flex-1 py-3 border border-white/20 hover:border-cyan-500 hover:text-cyan-500 text-xs transition-colors"
                                     >
-                                        Skip
-                                    </ProButton>
+                                        {isScanning ? "SCANNING..." : "INIT_SCANNER"}
+                                    </button>
+                                    <button
+                                        onClick={() => setScanResult("Bypassed")}
+                                        className="py-3 px-6 text-xs text-gray-600 hover:text-white transition-colors"
+                                    >
+                                        // BYPASS
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="p-3 border border-emerald-500/30 text-emerald-500 text-xs font-mono bg-emerald-500/5">
+                                    {">"} {scanResult}
                                 </div>
                             )}
-                        </ProCard>
+                        </div>
 
-                        <ProButton size="lg" className="w-full" onClick={() => {
-                            audioCoach.sessionStart();
-                            setView('COURT');
-                        }}>
-                            <Zap className="w-5 h-5 mr-2" /> Start
-                        </ProButton>
-
-                        <Link href="/" className="block text-center text-sm text-gray-600 hover:text-white">Cancel</Link>
+                        <button
+                            onClick={() => { audioCoach.sessionStart(); setView('COURT'); }}
+                            className="w-full py-4 bg-white hover:bg-cyan-400 hover:text-black text-black font-bold tracking-widest transition-colors"
+                        >
+                            ENGAGE SYSTEM
+                        </button>
                     </div>
                 </div>
             )}
 
-            {/* COURT */}
+            {/* COURT HUD */}
             {view === 'COURT' && (
                 <div className="relative w-full h-full">
                     <PosePipeline
@@ -318,133 +316,111 @@ export default function CoachPage() {
                         onLog={addLog}
                         onShot={(isPerfect, angle, feedback, physics, motion, ts) => handleShot(isPerfect, angle, isPerfect ? 'GOOD' : 'POOR', physics, motion, ts)}
                         onStreamReady={startRecording}
-                        onLandmarksUpdate={(shoulder, wrist) => { landmarksRef.current = { shoulder, wrist }; }}
+                        onLandmarksUpdate={(s, w) => { landmarksRef.current = { shoulder: s, wrist: w }; }}
                     />
 
-                    {/* HUD */}
-                    <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-40">
-                        <div className="glass-pro rounded-full px-6 py-3 flex items-center gap-6">
-                            {/* Shot Counter (Primary) */}
-                            <div className="text-center">
-                                <div className="text-3xl font-black text-white">
-                                    {totalShots + 1}<span className="text-lg text-gray-400">/{target}</span>
-                                </div>
-                                <div className="text-[10px] text-gray-400 uppercase tracking-widest">Shot</div>
+                    {/* Top HUD Bar */}
+                    <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-start z-50 pointer-events-none">
+                        <div className="flex gap-8">
+                            <div>
+                                <div className="text-[10px] text-gray-500">SHOT_COUNT</div>
+                                <div className="text-2xl text-white">{String(totalShots + 1).padStart(2, '0')}<span className="text-gray-600">/{target}</span></div>
                             </div>
-
-                            {/* Divider */}
-                            <div className="w-px h-10 bg-white/20" />
-
-                            {/* Makes/Accuracy */}
-                            <div className="text-center">
-                                <div className={`text-xl font-black ${perfectShots > 0 ? 'text-pro-green' : 'text-gray-400'}`}>
-                                    {perfectShots}<span className="text-sm text-gray-400"> made</span>
-                                </div>
-                                <div className="text-[10px] text-gray-400 uppercase tracking-widest">
-                                    {totalShots > 0 ? Math.round((perfectShots / totalShots) * 100) : 0}% accuracy
+                            <div>
+                                <div className="text-[10px] text-gray-500">ACCURACY</div>
+                                <div className={`text-2xl ${perfectShots > 0 ? 'text-cyan-400' : 'text-white'}`}>
+                                    {totalShots > 0 ? Math.round((perfectShots / totalShots) * 100) : 0}%
                                 </div>
                             </div>
-
-                            <button onClick={handleEndSession} className="bg-pro-red/20 hover:bg-pro-red/30 text-pro-red rounded-full p-3">
-                                <div className="w-4 h-4 bg-pro-red rounded-sm" />
-                            </button>
                         </div>
+
+                        <div className="flex gap-1 items-center">
+                            <span className="text-[10px] text-gray-500 mr-2">STREAK</span>
+                            {Array.from({ length: Math.min(5, streak) }).map((_, i) => (
+                                <div key={i} className="w-1.5 h-6 bg-cyan-500 shadow-[0_0_10px_#00F0FF]" />
+                            ))}
+                            {streak > 5 && <span className="text-cyan-500 font-bold ml-1">+{streak - 5}</span>}
+                        </div>
+
+                        <button onClick={handleEndSession} className="pointer-events-auto border border-red-500/50 text-red-500 hover:bg-red-500 hover:text-black px-4 py-2 text-xs transition-colors">
+                            TERMINATE
+                        </button>
                     </div>
 
-                    <div className="absolute top-24 left-1/2 transform -translate-x-1/2 z-40">
-                        <StreakBadge streak={streak} />
-                    </div>
+                    {/* Crosshairs */}
+                    <div className="absolute top-6 left-6 w-4 h-4 border-t border-l border-white/30" />
+                    <div className="absolute top-6 right-6 w-4 h-4 border-t border-r border-white/30" />
+                    <div className="absolute bottom-6 left-6 w-4 h-4 border-b border-l border-white/30" />
+                    <div className="absolute bottom-6 right-6 w-4 h-4 border-b border-r border-white/30" />
                 </div>
             )}
 
-            {/* FILM ROOM */}
+            {/* FILM ROOM (Analysis) */}
             {view === 'FILM_ROOM' && (
-                <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-gradient-to-b from-black to-gray-900">
-                    <div className="max-w-5xl mx-auto w-full space-y-6 animate-in fade-in duration-500">
+                <div className="flex-1 flex flex-col p-8 overflow-y-auto bg-black border-t-2 border-cyan-500/20">
+                    <header className="flex justify-between items-end mb-12 border-b border-white/10 pb-6">
+                        <div>
+                            <div className="text-[10px] text-cyan-500 mb-2">SESSION_ID: {Date.now().toString().slice(-6)}</div>
+                            <h1 className="text-5xl font-light text-white">ANALYSIS REPORT</h1>
+                        </div>
+                        <div className="text-right space-y-1">
+                            <div className="text-2xl font-bold text-white">{sessionGrade} GRADE</div>
+                            <div className="text-xs text-gray-500">PERFORMANCE INDEX</div>
+                        </div>
+                    </header>
 
-                        {/* Header */}
-                        <header className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className={`w-20 h-20 rounded-2xl flex items-center justify-center text-4xl font-black bg-gradient-to-br ${GRADE_COLORS[sessionGrade]}`}>
-                                    {sessionGrade}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                        {/* Data Column */}
+                        <div className="lg:col-span-1 space-y-12">
+                            {/* Summary Stats */}
+                            <div className="grid grid-cols-2 gap-8">
+                                <div>
+                                    <div className="text-4xl font-light text-white">{totalShots > 0 ? Math.round((perfectShots / totalShots) * 100) : 0}%</div>
+                                    <div className="text-[10px] text-gray-500 mt-1 uppercase">Accuracy</div>
                                 </div>
                                 <div>
-                                    <h1 className="text-2xl font-bold text-white">Analysis Complete</h1>
-                                    <p className="text-gray-500 font-mono text-sm">
-                                        {perfectShots}/{totalShots} perfect • σ={angleStdDev.toFixed(1)}° • μ={avgAngle}°
-                                    </p>
+                                    <div className="text-4xl font-light text-cyan-400">{avgAngle}°</div>
+                                    <div className="text-[10px] text-gray-500 mt-1 uppercase">Avg. Release</div>
+                                </div>
+                                <div>
+                                    <div className="text-4xl font-light text-purple-400">{bestStreak}</div>
+                                    <div className="text-[10px] text-gray-500 mt-1 uppercase">Max Streak</div>
+                                </div>
+                                <div>
+                                    <div className="text-4xl font-light text-white">±{angleStdDev.toFixed(1)}°</div>
+                                    <div className="text-[10px] text-gray-500 mt-1 uppercase">Variance</div>
                                 </div>
                             </div>
-                            <Link href="/"><ProButton variant="ghost">Exit</ProButton></Link>
-                        </header>
 
-                        {/* Stats Grid */}
-                        <div className="grid grid-cols-4 gap-4">
-                            <div className="bg-white/5 rounded-xl p-4 border border-white/10 text-center">
-                                <div className="text-2xl font-black text-white">{totalShots > 0 ? Math.round((perfectShots / totalShots) * 100) : 0}%</div>
-                                <div className="text-xs text-gray-500 uppercase tracking-widest">Accuracy</div>
-                            </div>
-                            <div className="bg-white/5 rounded-xl p-4 border border-white/10 text-center">
-                                <div className="text-2xl font-black text-pro-green">{avgAngle}°</div>
-                                <div className="text-xs text-gray-500 uppercase tracking-widest">Avg Elbow</div>
-                            </div>
-                            <div className="bg-white/5 rounded-xl p-4 border border-white/10 text-center">
-                                <div className="text-2xl font-black text-orange-400">{bestStreak}</div>
-                                <div className="text-xs text-gray-500 uppercase tracking-widest">Best Streak</div>
-                            </div>
-                            <div className="bg-white/5 rounded-xl p-4 border border-white/10 text-center">
-                                <div className="text-2xl font-black text-pro-blue">±{angleStdDev.toFixed(1)}°</div>
-                                <div className="text-xs text-gray-500 uppercase tracking-widest">Consistency</div>
-                            </div>
-                        </div>
-
-                        {/* Split Master/Detail View */}
-                        <div className="grid grid-cols-3 gap-6 h-[600px]">
-
-                            {/* LEFT: SHOT TAPE (Playlist) */}
-                            <div className="col-span-1 bg-white/5 rounded-2xl border border-white/10 overflow-hidden flex flex-col">
-                                <div className="p-4 border-b border-white/10 bg-white/5">
-                                    <h3 className="font-bold text-white flex items-center gap-2">
-                                        <Play className="w-4 h-4 text-pro-blue" /> Shot Tape
-                                    </h3>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                            {/* Shot List */}
+                            <div className="border-t border-white/10 pt-6">
+                                <h3 className="text-xs text-gray-500 uppercase mb-4">Sequence Log</h3>
+                                <div className="h-64 overflow-y-auto space-y-px bg-white/5">
                                     {shots.map((shot, idx) => (
                                         <button
                                             key={shot.id}
                                             onClick={() => setSelectedShotId(shot.id)}
-                                            className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between group border ${selectedShotId === shot.id
-                                                ? 'bg-pro-blue/20 border-pro-blue text-white shadow-lg shadow-pro-blue/20'
-                                                : shot.isPerfect
-                                                    ? 'bg-pro-green/5 border-pro-green/30 text-pro-green hover:bg-pro-green/10'
-                                                    : 'bg-red-500/5 border-red-500/20 text-red-400 hover:bg-red-500/10'
-                                                }`}
+                                            className={`w-full flex justify-between px-4 py-3 text-xs hover:bg-white/10 transition-colors ${selectedShotId === shot.id ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400'}`}
                                         >
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${shot.isPerfect
-                                                    ? 'bg-pro-green text-black shadow-[0_0_12px_rgba(0,230,118,0.5)]'
-                                                    : 'bg-red-500/30 text-red-300'
-                                                    }`}>
-                                                    {shot.isPerfect ? '✓' : '✗'}
-                                                </div>
-                                                <div>
-                                                    <div className={`text-sm font-bold ${shot.isPerfect ? 'text-pro-green' : 'text-red-400'}`}>
-                                                        {shot.isPerfect ? '🟢 SWISH' : '🔴 MISS'}
-                                                    </div>
-                                                    <div className="text-[10px] opacity-60 font-mono text-gray-400">
-                                                        Shot #{idx + 1} • {Math.round(shot.elbowAngle)}°
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            {selectedShotId === shot.id && <Play className="w-4 h-4 fill-current text-pro-blue" />}
+                                            <span>{String(idx + 1).padStart(2, '0')}</span>
+                                            <span className={shot.isPerfect ? "text-cyan-400" : "text-white/30"}>{shot.isPerfect ? "SWISH" : "MISS"}</span>
+                                            <span className="font-mono">{Math.round(shot.elbowAngle)}°</span>
                                         </button>
                                     ))}
                                 </div>
                             </div>
+                        </div>
 
-                            {/* RIGHT: PLAYER (Video + 3D) */}
-                            <div className="col-span-2 flex flex-col gap-4">
-                                <Suspense fallback={<div className="h-[400px] flex items-center justify-center"><Loader2 className="animate-spin" /></div>}>
+                        {/* Visual Column */}
+                        <div className="lg:col-span-2 flex flex-col gap-6">
+                            <div className="h-[500px] border border-white/10 bg-black relative">
+                                {/* Corners */}
+                                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/50" />
+                                <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/50" />
+                                <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-white/50" />
+                                <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white/50" />
+
+                                <Suspense fallback={<div className="p-8 text-xs text-gray-500">LOADING_VISUALIZER...</div>}>
                                     <SplitView
                                         videoBlob={videoBlob}
                                         onPlayStateChange={setIsReplayPlaying}
@@ -460,110 +436,14 @@ export default function CoachPage() {
                                         />
                                     </SplitView>
                                 </Suspense>
-
-                                {/* COMPREHENSIVE SHOT ANALYTICS */}
-                                {selectedShotId && (() => {
-                                    const shot = shots.find(s => s.id === selectedShotId);
-                                    const p = shot?.trajectory;
-                                    const m = shot?.metrics;
-                                    if (!shot) return null;
-
-                                    return (
-                                        <div className="space-y-3">
-                                            {/* Physics Row */}
-                                            <ProCard className="p-4">
-                                                <div className="text-[10px] text-gray-500 uppercase mb-3 flex items-center gap-2">
-                                                    <span className="w-2 h-2 rounded-full bg-pro-blue animate-pulse" />
-                                                    BALLISTIC TRAJECTORY
-                                                </div>
-                                                <div className="grid grid-cols-4 gap-4 text-center">
-                                                    <div>
-                                                        <div className="text-2xl font-mono text-pro-green">{p ? Math.round(p.releaseAngle) : '--'}°</div>
-                                                        <div className="text-[10px] text-gray-500">RELEASE ANGLE</div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-2xl font-mono text-pro-blue">{p ? (p.releaseVelocity).toFixed(1) : '--'}</div>
-                                                        <div className="text-[10px] text-gray-500">VELOCITY (m/s)</div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-2xl font-mono text-orange-400">{p ? p.arcHeight.toFixed(2) : '--'}</div>
-                                                        <div className="text-[10px] text-gray-500">ARC HEIGHT (m)</div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-2xl font-mono text-white">{p ? p.timeOfFlight.toFixed(2) : '--'}</div>
-                                                        <div className="text-[10px] text-gray-500">FLIGHT TIME (s)</div>
-                                                    </div>
-                                                </div>
-                                            </ProCard>
-
-                                            {/* Biomechanics Row */}
-                                            {m && (
-                                                <ProCard className="p-4">
-                                                    <div className="text-[10px] text-gray-500 uppercase mb-3 flex items-center gap-2">
-                                                        <span className="w-2 h-2 rounded-full bg-pro-green animate-pulse" />
-                                                        BIOMECHANICS
-                                                    </div>
-                                                    <div className="grid grid-cols-5 gap-3 text-center">
-                                                        <div>
-                                                            <div className="text-lg font-mono text-cyan-400">{m.setAngle}°</div>
-                                                            <div className="text-[9px] text-gray-500">SET ANGLE</div>
-                                                        </div>
-                                                        <div>
-                                                            <div className="text-lg font-mono text-cyan-400">{m.releaseAngle}°</div>
-                                                            <div className="text-[9px] text-gray-500">RELEASE ANGLE</div>
-                                                        </div>
-                                                        <div>
-                                                            <div className="text-lg font-mono text-yellow-400">{m.armExtensionSpeed}</div>
-                                                            <div className="text-[9px] text-gray-500">SPEED (°/s)</div>
-                                                        </div>
-                                                        <div>
-                                                            <div className="text-lg font-mono text-pink-400">{m.verticalLift.toFixed(1)}%</div>
-                                                            <div className="text-[9px] text-gray-500">VERTICAL LIFT</div>
-                                                        </div>
-                                                        <div>
-                                                            <div className="text-lg font-mono text-purple-400">{m.releaseTime}ms</div>
-                                                            <div className="text-[9px] text-gray-500">RELEASE TIME</div>
-                                                        </div>
-                                                    </div>
-                                                </ProCard>
-                                            )}
-
-                                            {/* Form Score Bar */}
-                                            {m && (
-                                                <ProCard className="p-4">
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <span className="text-[10px] text-gray-500 uppercase">FORM QUALITY SCORE</span>
-                                                        <span className={`text-xl font-black ${m.formScore >= 70 ? 'text-pro-green' : m.formScore >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>
-                                                            {m.formScore}/100
-                                                        </span>
-                                                    </div>
-                                                    <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
-                                                        <div
-                                                            className={`h-full transition-all duration-500 ${m.formScore >= 70 ? 'bg-gradient-to-r from-pro-green to-emerald-400' :
-                                                                m.formScore >= 40 ? 'bg-gradient-to-r from-yellow-500 to-orange-400' :
-                                                                    'bg-gradient-to-r from-red-500 to-pink-400'
-                                                                }`}
-                                                            style={{ width: `${m.formScore}%` }}
-                                                        />
-                                                    </div>
-                                                    <div className="mt-2 text-[10px] text-gray-400">
-                                                        {m.formScore >= 70 ? '✅ Excellent form - NBA-level mechanics' :
-                                                            m.formScore >= 40 ? '⚠️ Decent form - work on follow-through' :
-                                                                '❌ Poor form - slow down and focus on fundamentals'}
-                                                    </div>
-                                                </ProCard>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
                             </div>
-                        </div>
 
-                        {/* Actions */}
-                        <div className="flex gap-4">
-                            <ProButton className="flex-1" onClick={resetSession}>
-                                <RotateCcw className="w-4 h-4 mr-2" /> Train Again
-                            </ProButton>
+                            <div className="flex justify-between items-center text-[10px] text-gray-600 uppercase">
+                                <div>Interactive 3D Replay Module</div>
+                                <button onClick={resetSession} className="text-white hover:text-cyan-400 flex items-center gap-2">
+                                    <RotateCcw className="w-3 h-3" /> Reset System
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
