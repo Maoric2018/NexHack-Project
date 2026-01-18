@@ -37,8 +37,8 @@ function NeonCourt() {
                 <Line points={threePtPoints} color="#333" lineWidth={1.5} />
 
                 {/* Key Fill (Semi-transparent) */}
-                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.005, 2.9]}>
-                    <planeGeometry args={[4.9, 5.8]} />
+                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.005, 2.3]}>
+                    <planeGeometry args={[4.9, 4.6]} />
                     <meshBasicMaterial color="#06b6d4" transparent opacity={0.05} />
                 </mesh>
 
@@ -46,8 +46,8 @@ function NeonCourt() {
                 <Line
                     points={[
                         new THREE.Vector3(-2.45, 0, 0),
-                        new THREE.Vector3(-2.45, 0, 5.8),
-                        new THREE.Vector3(2.45, 0, 5.8),
+                        new THREE.Vector3(-2.45, 0, 4.6),
+                        new THREE.Vector3(2.45, 0, 4.6),
                         new THREE.Vector3(2.45, 0, 0),
                     ]}
                     color="#22d3ee"
@@ -60,7 +60,7 @@ function NeonCourt() {
                         const pts: THREE.Vector3[] = [];
                         for (let i = 0; i <= 32; i++) {
                             const a = (i / 32) * Math.PI * 2;
-                            pts.push(new THREE.Vector3(Math.cos(a) * 1.8, 0, Math.sin(a) * 1.8 + 5.8));
+                            pts.push(new THREE.Vector3(Math.cos(a) * 1.8, 0, Math.sin(a) * 1.8 + 4.6));
                         }
                         return pts;
                     })()}
@@ -71,8 +71,8 @@ function NeonCourt() {
                 {/* Free throw line */}
                 <Line
                     points={[
-                        new THREE.Vector3(-2.45, 0, 5.8),
-                        new THREE.Vector3(2.45, 0, 5.8),
+                        new THREE.Vector3(-2.45, 0, 4.6),
+                        new THREE.Vector3(2.45, 0, 4.6),
                     ]}
                     color="#22d3ee"
                     lineWidth={2}

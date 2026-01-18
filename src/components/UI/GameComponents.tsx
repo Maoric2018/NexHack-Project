@@ -89,7 +89,7 @@ export function StreakBadge({ streak, className }: StreakBadgeProps) {
 // Celebration Overlay - FIXED: proper effect cleanup and guards
 interface CelebrationOverlayProps {
     show: boolean;
-    grade: 'S' | 'A' | 'B' | 'C';
+    grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
     onComplete?: () => void;
 }
 
@@ -129,6 +129,8 @@ export function CelebrationOverlay({ show, grade, onComplete }: CelebrationOverl
         'A': 'from-green-400 to-emerald-500',
         'B': 'from-blue-400 to-cyan-500',
         'C': 'from-gray-400 to-slate-500',
+        'D': 'from-orange-800 to-red-600',
+        'F': 'from-red-600 to-red-900',
     };
 
     return (
@@ -144,7 +146,22 @@ export function CelebrationOverlay({ show, grade, onComplete }: CelebrationOverl
                 )}>
                     {grade}
                 </div>
-                <p className="text-xl text-white/60">Session Grade</p>
+                <div className="space-y-1">
+                    <p className="text-2xl font-bold text-white tracking-wide">
+                        {(() => {
+                            switch (grade) {
+                                case 'S': return 'ELITE MARKSMAN';
+                                case 'A': return 'PROFESSIONAL';
+                                case 'B': return 'COLLEGIATE';
+                                case 'C': return 'DEVELOPMENTAL';
+                                case 'D': return 'NOVICE';
+                                case 'F': return 'NEEDS WORK';
+                                default: return 'UNRATED';
+                            }
+                        })()}
+                    </p>
+                    <p className="text-sm text-white/50 uppercase tracking-widest">Session Grade</p>
+                </div>
             </div>
         </div>
     );

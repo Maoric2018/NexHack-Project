@@ -258,7 +258,7 @@ function CoachContent() {
 
     return (
         <div className="relative w-full h-screen bg-black overflow-hidden flex flex-col font-mono text-white selection:bg-cyan-500/30">
-            <DebugConsole logs={logs} />
+            {/* DebugConsole removed */}
             <CelebrationOverlay show={showCelebration} grade={sessionGrade as any} onComplete={() => { setShowCelebration(false); handleEndSession(); }} />
 
             {/* SCANNING STATE */}
@@ -396,76 +396,91 @@ function CoachContent() {
             {/* FILM ROOM (Analysis) */}
             {
                 view === 'FILM_ROOM' && (
-                    <div className="flex-1 flex flex-col p-8 overflow-y-auto bg-black border-t-2 border-cyan-500/20">
-                        <header className="flex justify-between items-end mb-12 border-b border-white/10 pb-6">
+                    <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-black border-t-2 border-cyan-500/20">
+                        <header className="flex justify-between items-end mb-6 border-b border-white/10 pb-4">
                             <div>
-                                <div className="text-[10px] text-cyan-500 mb-2">SESSION_ID: {Date.now().toString().slice(-6)}</div>
-                                <h1 className="text-5xl font-light text-white">ANALYSIS REPORT</h1>
+                                <div className="text-[10px] text-cyan-500 mb-1">SESSION_ID: {Date.now().toString().slice(-6)}</div>
+                                <h1 className="text-4xl font-light text-white">ANALYSIS REPORT</h1>
                             </div>
                             <div className="text-right space-y-1">
-                                <div className="text-2xl font-bold text-white">{sessionGrade} GRADE</div>
-                                <div className="text-xs text-gray-500">PERFORMANCE INDEX</div>
+                                <div className="text-xl font-bold text-white">
+                                    {sessionGrade} GRADE
+                                    <span className="ml-2 text-sm text-gray-500 font-normal">
+                                        {(() => {
+                                            switch (sessionGrade) {
+                                                case 'S': return 'ELITE MARKSMAN';
+                                                case 'A': return 'PROFESSIONAL';
+                                                case 'B': return 'COLLEGIATE';
+                                                case 'C': return 'DEVELOPMENTAL';
+                                                case 'D': return 'NOVICE';
+                                                case 'F': return 'NEEDS WORK';
+                                                default: return 'UNRATED';
+                                            }
+                                        })()}
+                                    </span>
+                                </div>
+                                <div className="text-[10px] text-gray-500">PERFORMANCE INDEX</div>
                             </div>
                         </header>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                             {/* Data Column */}
-                            <div className="lg:col-span-1 space-y-12">
+                            <div className="lg:col-span-1 space-y-8">
                                 {/* Summary Stats */}
-                                <div className="grid grid-cols-2 gap-8">
+                                <div className="grid grid-cols-2 gap-6">
                                     <div>
-                                        <div className="text-4xl font-light text-white">{totalShots > 0 ? Math.round((perfectShots / totalShots) * 100) : 0}%</div>
-                                        <div className="text-[10px] text-gray-500 mt-1 uppercase">Accuracy</div>
+                                        <div className="text-3xl font-light text-white">{totalShots > 0 ? Math.round((perfectShots / totalShots) * 100) : 0}%</div>
+                                        <div className="text-[9px] text-gray-500 mt-1 uppercase">Accuracy</div>
                                     </div>
                                     <div>
-                                        <div className="text-4xl font-light text-cyan-400">{avgAngle}°</div>
-                                        <div className="text-[10px] text-gray-500 mt-1 uppercase">Avg. Release</div>
+                                        <div className="text-3xl font-light text-cyan-400">{avgAngle}°</div>
+                                        <div className="text-[9px] text-gray-500 mt-1 uppercase">Avg. Release</div>
                                     </div>
                                     <div>
-                                        <div className="text-4xl font-light text-purple-400">{bestStreak}</div>
-                                        <div className="text-[10px] text-gray-500 mt-1 uppercase">Max Streak</div>
+                                        <div className="text-3xl font-light text-purple-400">{bestStreak}</div>
+                                        <div className="text-[9px] text-gray-500 mt-1 uppercase">Max Streak</div>
                                     </div>
                                     <div>
-                                        <div className="text-4xl font-light text-white">±{angleStdDev.toFixed(1)}°</div>
-                                        <div className="text-[10px] text-gray-500 mt-1 uppercase">Variance</div>
+                                        <div className="text-3xl font-light text-white">±{angleStdDev.toFixed(1)}°</div>
+                                        <div className="text-[9px] text-gray-500 mt-1 uppercase">Variance</div>
                                     </div>
                                 </div>
 
                                 {/* Advanced Physics Card with Comparison */}
-                                <div className="md:col-span-2 bg-black/40 border border-white/10 rounded-xl p-4 overflow-hidden relative">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <h3 className="text-xs text-gray-400 uppercase tracking-widest pl-1">Ballistics Analysis</h3>
-                                        <div className="flex gap-4 text-[10px] text-gray-500 uppercase tracking-wider">
-                                            <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-cyan-500"></div>Actual</div>
-                                            <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-white/20"></div>Optimal</div>
+                                <div className="md:col-span-2 bg-black/40 border border-white/10 rounded-xl p-3 overflow-hidden relative">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <h3 className="text-[10px] text-gray-400 uppercase tracking-widest pl-1">Ballistics Analysis</h3>
+                                        <div className="flex gap-3 text-[9px] text-gray-500 uppercase tracking-wider">
+                                            <div className="flex items-center gap-1"><div className="w-1 h-1 rounded-full bg-cyan-500"></div>Actual</div>
+                                            <div className="flex items-center gap-1"><div className="w-1 h-1 rounded-full bg-white/20"></div>Optimal</div>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-4 gap-px bg-white/5 border border-white/10 rounded-lg overflow-hidden">
-                                        <div className="p-3">
-                                            <div className="text-[9px] text-gray-500 uppercase mb-1">Entry Angle</div>
-                                            <div className="text-lg text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.entryAngle : physics?.entryAngle)?.toFixed(1) || '--'}°</div>
-                                            <div className="text-[10px] text-gray-500 mt-1">
+                                        <div className="p-2">
+                                            <div className="text-[9px] text-gray-500 uppercase mb-0.5">Entry Angle</div>
+                                            <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.entryAngle : physics?.entryAngle)?.toFixed(1) || '--'}°</div>
+                                            <div className="text-[9px] text-gray-500 mt-0.5">
                                                 {playerLocation ? (45 + (Math.sqrt(playerLocation.x ** 2 + (playerLocation.z - 1.575) ** 2) * 0.5)).toFixed(1) : '--'}° <span className="opacity-50">opt</span>
                                             </div>
                                         </div>
-                                        <div className="p-3 bg-white/5">
-                                            <div className="text-[9px] text-gray-500 uppercase mb-1">Release Vel</div>
-                                            <div className="text-lg text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.releaseVelocity : physics?.releaseVelocity)?.toFixed(1) || '--'} <span className="text-[10px] text-gray-500">m/s</span></div>
-                                            <div className="text-[10px] text-gray-500 mt-1">
+                                        <div className="p-2 bg-white/5">
+                                            <div className="text-[9px] text-gray-500 uppercase mb-0.5">Release Vel</div>
+                                            <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.releaseVelocity : physics?.releaseVelocity)?.toFixed(1) || '--'} <span className="text-[9px] text-gray-500">m/s</span></div>
+                                            <div className="text-[9px] text-gray-500 mt-0.5">
                                                 {playerLocation ? (Math.sqrt(Math.sqrt(playerLocation.x ** 2 + (playerLocation.z - 1.575) ** 2) * 9.8) * 1.8).toFixed(1) : '--'} <span className="opacity-50">opt</span>
                                             </div>
                                         </div>
-                                        <div className="p-3">
-                                            <div className="text-[9px] text-gray-500 uppercase mb-1">Flight Time</div>
-                                            <div className="text-lg text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.timeOfFlight : physics?.timeOfFlight)?.toFixed(2) || '--'}s</div>
-                                            <div className="text-[10px] text-gray-500 mt-1 tracking-wide">
+                                        <div className="p-2">
+                                            <div className="text-[9px] text-gray-500 uppercase mb-0.5">Flight Time</div>
+                                            <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.timeOfFlight : physics?.timeOfFlight)?.toFixed(2) || '--'}s</div>
+                                            <div className="text-[9px] text-gray-500 mt-0.5 tracking-wide">
                                                 IDEAL <span className="text-emerald-400">{(physics?.timeOfFlight || 0) > 1.0 ? '✓' : ''}</span>
                                             </div>
                                         </div>
-                                        <div className="p-3 bg-white/5">
-                                            <div className="text-[9px] text-gray-500 uppercase mb-1">Max Height</div>
-                                            <div className="text-lg text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.arcHeight : physics?.arcHeight)?.toFixed(2) || '--'}m</div>
-                                            <div className="text-[10px] text-gray-500 mt-1">
+                                        <div className="p-2 bg-white/5">
+                                            <div className="text-[9px] text-gray-500 uppercase mb-0.5">Max Height</div>
+                                            <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.arcHeight : physics?.arcHeight)?.toFixed(2) || '--'}m</div>
+                                            <div className="text-[9px] text-gray-500 mt-0.5">
                                                 Arc Ratio <span className="text-cyan-400">1.4</span>
                                             </div>
                                         </div>
@@ -473,14 +488,14 @@ function CoachContent() {
                                 </div>
 
                                 {/* Shot List */}
-                                <div className="border-t border-white/10 pt-6">
-                                    <h3 className="text-xs text-gray-500 uppercase mb-4">Sequence Log</h3>
-                                    <div className="h-64 overflow-y-auto space-y-px bg-white/5">
+                                <div className="border-t border-white/10 pt-4">
+                                    <h3 className="text-[10px] text-gray-500 uppercase mb-3">Sequence Log</h3>
+                                    <div className="h-56 overflow-y-auto space-y-px bg-white/5">
                                         {shots.map((shot, idx) => (
                                             <button
                                                 key={shot.id}
                                                 onClick={() => setSelectedShotId(shot.id)}
-                                                className={`w-full flex justify-between px-4 py-3 text-xs hover:bg-white/10 transition-colors ${selectedShotId === shot.id ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400'}`}
+                                                className={`w-full flex justify-between px-3 py-2 text-[10px] hover:bg-white/10 transition-colors ${selectedShotId === shot.id ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400'}`}
                                             >
                                                 <span>{String(idx + 1).padStart(2, '0')}</span>
                                                 <span className={shot.isPerfect ? "text-cyan-400" : "text-white/30"}>{shot.isPerfect ? "SWISH" : "MISS"}</span>
@@ -492,9 +507,9 @@ function CoachContent() {
                             </div>
 
                             {/* Visual Column */}
-                            <div className="lg:col-span-2 flex flex-col gap-4">
+                            <div className="lg:col-span-2 flex flex-col gap-3">
                                 {/* Video & 3D Reconstruction - Shifted Up */}
-                                <div className="h-[400px] border border-white/10 bg-black relative">
+                                <div className="h-[320px] border border-white/10 bg-black relative">
                                     {/* Corners */}
                                     <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/50" />
                                     <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/50" />
@@ -520,7 +535,7 @@ function CoachContent() {
                                     </Suspense>
                                 </div>
 
-                                <div className="flex justify-between items-center text-[10px] text-gray-600 uppercase">
+                                <div className="flex justify-between items-center text-[9px] text-gray-600 uppercase">
                                     <div>Interactive 3D Replay Module</div>
                                     <button onClick={resetSession} className="text-white hover:text-cyan-400 flex items-center gap-2">
                                         <RotateCcw className="w-3 h-3" /> Reset System
@@ -528,11 +543,11 @@ function CoachContent() {
                                 </div>
 
                                 {/* Overshoot AI Coach Feedback Section */}
-                                <div className="border border-white/10 bg-black/60 backdrop-blur-sm">
+                                <div className="border border-white/10 bg-black/60 backdrop-blur-sm flex-1">
                                     {/* Header */}
-                                    <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-                                        <div className="flex items-center gap-3">
-                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
+                                        <div className="flex items-center gap-2">
+                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                                 <circle cx="12" cy="12" r="10" stroke="url(#overshoot-coach-gradient)" strokeWidth="2" />
                                                 <circle cx="12" cy="12" r="4" fill="url(#overshoot-coach-gradient)" />
                                                 <defs>
@@ -543,19 +558,19 @@ function CoachContent() {
                                                 </defs>
                                             </svg>
                                             <div>
-                                                <h3 className="text-sm text-white font-light tracking-wide">AI Coach Analysis</h3>
-                                                <p className="text-[9px] text-gray-600 uppercase tracking-wider">Powered by Overshoot</p>
+                                                <h3 className="text-xs text-white font-light tracking-wide">AI Coach Analysis</h3>
+                                                <p className="text-[8px] text-gray-600 uppercase tracking-wider">Powered by Overshoot</p>
                                             </div>
                                         </div>
                                         {selectedShotId && (
-                                            <div className="text-[10px] text-cyan-400/70 uppercase tracking-wider">
+                                            <div className="text-[9px] text-cyan-400/70 uppercase tracking-wider">
                                                 Shot #{String(selectedShotId).padStart(2, '0')}
                                             </div>
                                         )}
                                     </div>
 
                                     {/* Feedback Content */}
-                                    <div className="p-4 space-y-4">
+                                    <div className="p-3 space-y-3">
                                         {selectedShotId ? (
                                             (() => {
                                                 const shot = shots.find(s => s.id === selectedShotId);
@@ -577,30 +592,30 @@ function CoachContent() {
                                                     <>
                                                         {/* Shot Result Badge */}
                                                         <div className="flex items-center gap-3">
-                                                            <div className={`px-3 py-1 text-xs uppercase tracking-wider ${shot.isPerfect
-                                                                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                                                                    : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                                            <div className={`px-2 py-0.5 text-[10px] uppercase tracking-wider ${shot.isPerfect
+                                                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                                                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
                                                                 }`}>
                                                                 {shot.isPerfect ? 'SWISH' : 'MISS'}
                                                             </div>
-                                                            <span className="text-xs text-gray-500">
+                                                            <span className="text-[10px] text-gray-500">
                                                                 {shot.isPerfect ? 'Clean entry, optimal form detected.' : 'Form correction recommended.'}
                                                             </span>
                                                         </div>
 
                                                         {/* Detailed Feedback */}
-                                                        <div className="space-y-3">
+                                                        <div className="space-y-2">
                                                             {/* Arc Analysis */}
                                                             <div className="flex items-start gap-3">
-                                                                <div className={`w-1 h-full min-h-[40px] ${isGoodArc ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                <div className={`w-0.5 h-full min-h-[32px] ${isGoodArc ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                                                                 <div>
-                                                                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Arc Analysis</div>
-                                                                    <p className="text-xs text-gray-300 leading-relaxed">
+                                                                    <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">Arc Analysis</div>
+                                                                    <p className="text-[11px] text-gray-300 leading-relaxed">
                                                                         {isGoodArc
-                                                                            ? `Entry angle of ${entryAngle.toFixed(1)}° is within optimal range. Excellent arc control—this trajectory maximizes rim clearance.`
+                                                                            ? `Entry angle of ${entryAngle.toFixed(1)}° is within optimal range. Excellent arc control.`
                                                                             : angleDiff > 0
-                                                                                ? `Entry angle ${entryAngle.toFixed(1)}° is ${angleDiff.toFixed(1)}° too high. Reduce arc height slightly for more consistent makes.`
-                                                                                : `Entry angle ${entryAngle.toFixed(1)}° is ${Math.abs(angleDiff).toFixed(1)}° too flat. Increase follow-through height and extend your release point.`
+                                                                                ? `Entry angle ${entryAngle.toFixed(1)}° is ${angleDiff.toFixed(1)}° too high. Reduce arc.`
+                                                                                : `Entry angle ${entryAngle.toFixed(1)}° is ${Math.abs(angleDiff).toFixed(1)}° too flat. increase arc.`
                                                                         }
                                                                     </p>
                                                                 </div>
@@ -608,15 +623,15 @@ function CoachContent() {
 
                                                             {/* Elbow Analysis */}
                                                             <div className="flex items-start gap-3">
-                                                                <div className={`w-1 h-full min-h-[40px] ${isGoodElbow ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                <div className={`w-0.5 h-full min-h-[32px] ${isGoodElbow ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                                                                 <div>
-                                                                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Form Check</div>
-                                                                    <p className="text-xs text-gray-300 leading-relaxed">
+                                                                    <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">Form Check</div>
+                                                                    <p className="text-[11px] text-gray-300 leading-relaxed">
                                                                         {isGoodElbow
-                                                                            ? `Elbow at ${elbowAngle}° shows proper L-shape alignment. Shoulder, elbow, and wrist are in sync.`
+                                                                            ? `Elbow at ${elbowAngle}° shows proper alignment.`
                                                                             : elbowAngle < 85
-                                                                                ? `Elbow angle ${elbowAngle}° is too acute. Focus on creating a 90° angle before release to improve power transfer.`
-                                                                                : `Elbow angle ${elbowAngle}° is too wide. Tuck elbow closer to body for better control and consistency.`
+                                                                                ? `Elbow angle ${elbowAngle}° is too acute. Aim for 90°.`
+                                                                                : `Elbow angle ${elbowAngle}° is too wide. Tuck it in.`
                                                                         }
                                                                     </p>
                                                                 </div>
@@ -624,15 +639,15 @@ function CoachContent() {
 
                                                             {/* Release Analysis */}
                                                             <div className="flex items-start gap-3">
-                                                                <div className={`w-1 h-full min-h-[40px] ${releaseVel > 6 && releaseVel < 12 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                <div className={`w-0.5 h-full min-h-[32px] ${releaseVel > 6 && releaseVel < 12 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                                                                 <div>
-                                                                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Power Output</div>
-                                                                    <p className="text-xs text-gray-300 leading-relaxed">
+                                                                    <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">Power Output</div>
+                                                                    <p className="text-[11px] text-gray-300 leading-relaxed">
                                                                         {releaseVel > 6 && releaseVel < 12
-                                                                            ? `Release velocity of ${releaseVel.toFixed(1)} m/s is well-calibrated for this distance. Consistent leg drive detected.`
+                                                                            ? `Velocity of ${releaseVel.toFixed(1)} m/s is calibrated correctly.`
                                                                             : releaseVel <= 6
-                                                                                ? `Release at ${releaseVel.toFixed(1)} m/s underpowered. Engage legs more and follow through completely.`
-                                                                                : `Release at ${releaseVel.toFixed(1)} m/s overpowered. Soften touch—let arc do the work, not force.`
+                                                                                ? `Release at ${releaseVel.toFixed(1)} m/s underpowered.`
+                                                                                : `Release at ${releaseVel.toFixed(1)} m/s overpowered.`
                                                                         }
                                                                     </p>
                                                                 </div>
@@ -641,14 +656,14 @@ function CoachContent() {
 
                                                         {/* Key Improvement */}
                                                         {!shot.isPerfect && (
-                                                            <div className="mt-4 px-4 py-3 bg-cyan-500/5 border border-cyan-500/20">
-                                                                <div className="text-[10px] text-cyan-400 uppercase tracking-wider mb-1">Priority Focus</div>
-                                                                <p className="text-xs text-gray-300">
+                                                            <div className="mt-2 px-3 py-2 bg-cyan-500/5 border border-cyan-500/20">
+                                                                <div className="text-[9px] text-cyan-400 uppercase tracking-wider mb-0.5">Priority Focus</div>
+                                                                <p className="text-[10px] text-gray-300">
                                                                     {!isGoodElbow
-                                                                        ? 'Work on maintaining a consistent 90° elbow angle at release point.'
+                                                                        ? 'Work on maintaining a consistent 90° elbow angle.'
                                                                         : !isGoodArc
-                                                                            ? 'Focus on follow-through direction to optimize entry angle.'
-                                                                            : 'Minor adjustments needed—focus on consistent release timing.'
+                                                                            ? 'Focus on follow-through direction.'
+                                                                            : 'Focus on consistent timing.'
                                                                     }
                                                                 </p>
                                                             </div>
@@ -658,8 +673,8 @@ function CoachContent() {
                                             })()
                                         ) : (
                                             <div className="text-center py-6">
-                                                <div className="text-gray-600 text-xs uppercase tracking-wider mb-2">Select a shot from the sequence log</div>
-                                                <p className="text-gray-500 text-[10px]">Click on any shot to view personalized AI coaching feedback</p>
+                                                <div className="text-gray-600 text-[10px] uppercase tracking-wider mb-1">Select a shot from the sequence log</div>
+                                                <p className="text-gray-500 text-[9px]">Click on any shot to view personalized AI coaching feedback</p>
                                             </div>
                                         )}
                                     </div>
