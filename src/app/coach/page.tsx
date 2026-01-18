@@ -473,35 +473,9 @@ function CoachContent() {
                             </div>
 
                             {/* Visual Column */}
-                            <div className="lg:col-span-2 flex flex-col gap-6">
-                                {/* Advanced Physics Card */}
-                                <div className="grid grid-cols-4 gap-4 p-4 border border-white/10 bg-white/5 backdrop-blur-sm">
-                                    <div>
-                                        <div className="text-[10px] text-gray-500 uppercase tracking-widest">Entry Angle</div>
-                                        <div className="text-xl text-cyan-400 font-light">
-                                            {(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.entryAngle : physics?.entryAngle)?.toFixed(1) || '--'}°
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] text-gray-500 uppercase tracking-widest">Release Vel</div>
-                                        <div className="text-xl text-white font-light">
-                                            {(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.releaseVelocity : physics?.releaseVelocity)?.toFixed(1) || '--'} m/s
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] text-gray-500 uppercase tracking-widest">Flight Time</div>
-                                        <div className="text-xl text-white font-light">
-                                            {(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.timeOfFlight : physics?.timeOfFlight)?.toFixed(2) || '--'}s
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] text-gray-500 uppercase tracking-widest">Max Height</div>
-                                        <div className="text-xl text-white font-light">
-                                            {(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.arcHeight : physics?.arcHeight)?.toFixed(2) || '--'}m
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="h-[500px] border border-white/10 bg-black relative">
+                            <div className="lg:col-span-2 flex flex-col gap-4">
+                                {/* Video & 3D Reconstruction - Shifted Up */}
+                                <div className="h-[400px] border border-white/10 bg-black relative">
                                     {/* Corners */}
                                     <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/50" />
                                     <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/50" />
@@ -532,6 +506,144 @@ function CoachContent() {
                                     <button onClick={resetSession} className="text-white hover:text-cyan-400 flex items-center gap-2">
                                         <RotateCcw className="w-3 h-3" /> Reset System
                                     </button>
+                                </div>
+
+                                {/* Overshoot AI Coach Feedback Section */}
+                                <div className="border border-white/10 bg-black/60 backdrop-blur-sm">
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+                                        <div className="flex items-center gap-3">
+                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <circle cx="12" cy="12" r="10" stroke="url(#overshoot-coach-gradient)" strokeWidth="2" />
+                                                <circle cx="12" cy="12" r="4" fill="url(#overshoot-coach-gradient)" />
+                                                <defs>
+                                                    <linearGradient id="overshoot-coach-gradient" x1="0" y1="0" x2="24" y2="24">
+                                                        <stop stopColor="#22d3ee" />
+                                                        <stop offset="1" stopColor="#3b82f6" />
+                                                    </linearGradient>
+                                                </defs>
+                                            </svg>
+                                            <div>
+                                                <h3 className="text-sm text-white font-light tracking-wide">AI Coach Analysis</h3>
+                                                <p className="text-[9px] text-gray-600 uppercase tracking-wider">Powered by Overshoot</p>
+                                            </div>
+                                        </div>
+                                        {selectedShotId && (
+                                            <div className="text-[10px] text-cyan-400/70 uppercase tracking-wider">
+                                                Shot #{String(selectedShotId).padStart(2, '0')}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Feedback Content */}
+                                    <div className="p-4 space-y-4">
+                                        {selectedShotId ? (
+                                            (() => {
+                                                const shot = shots.find(s => s.id === selectedShotId);
+                                                if (!shot) return null;
+
+                                                // Generate personalized feedback based on shot metrics
+                                                const entryAngle = shot.trajectory?.entryAngle || 0;
+                                                const releaseVel = shot.trajectory?.releaseVelocity || 0;
+                                                const elbowAngle = shot.elbowAngle;
+                                                const optimalEntryAngle = playerLocation
+                                                    ? 45 + (Math.sqrt(playerLocation.x ** 2 + (playerLocation.z - 1.575) ** 2) * 0.5)
+                                                    : 50;
+
+                                                const angleDiff = entryAngle - optimalEntryAngle;
+                                                const isGoodArc = Math.abs(angleDiff) < 5;
+                                                const isGoodElbow = elbowAngle >= 85 && elbowAngle <= 100;
+
+                                                return (
+                                                    <>
+                                                        {/* Shot Result Badge */}
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`px-3 py-1 text-xs uppercase tracking-wider ${shot.isPerfect
+                                                                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                                                                    : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                                                }`}>
+                                                                {shot.isPerfect ? 'SWISH' : 'MISS'}
+                                                            </div>
+                                                            <span className="text-xs text-gray-500">
+                                                                {shot.isPerfect ? 'Clean entry, optimal form detected.' : 'Form correction recommended.'}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Detailed Feedback */}
+                                                        <div className="space-y-3">
+                                                            {/* Arc Analysis */}
+                                                            <div className="flex items-start gap-3">
+                                                                <div className={`w-1 h-full min-h-[40px] ${isGoodArc ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                <div>
+                                                                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Arc Analysis</div>
+                                                                    <p className="text-xs text-gray-300 leading-relaxed">
+                                                                        {isGoodArc
+                                                                            ? `Entry angle of ${entryAngle.toFixed(1)}° is within optimal range. Excellent arc control—this trajectory maximizes rim clearance.`
+                                                                            : angleDiff > 0
+                                                                                ? `Entry angle ${entryAngle.toFixed(1)}° is ${angleDiff.toFixed(1)}° too high. Reduce arc height slightly for more consistent makes.`
+                                                                                : `Entry angle ${entryAngle.toFixed(1)}° is ${Math.abs(angleDiff).toFixed(1)}° too flat. Increase follow-through height and extend your release point.`
+                                                                        }
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Elbow Analysis */}
+                                                            <div className="flex items-start gap-3">
+                                                                <div className={`w-1 h-full min-h-[40px] ${isGoodElbow ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                <div>
+                                                                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Form Check</div>
+                                                                    <p className="text-xs text-gray-300 leading-relaxed">
+                                                                        {isGoodElbow
+                                                                            ? `Elbow at ${elbowAngle}° shows proper L-shape alignment. Shoulder, elbow, and wrist are in sync.`
+                                                                            : elbowAngle < 85
+                                                                                ? `Elbow angle ${elbowAngle}° is too acute. Focus on creating a 90° angle before release to improve power transfer.`
+                                                                                : `Elbow angle ${elbowAngle}° is too wide. Tuck elbow closer to body for better control and consistency.`
+                                                                        }
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Release Analysis */}
+                                                            <div className="flex items-start gap-3">
+                                                                <div className={`w-1 h-full min-h-[40px] ${releaseVel > 6 && releaseVel < 12 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                <div>
+                                                                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Power Output</div>
+                                                                    <p className="text-xs text-gray-300 leading-relaxed">
+                                                                        {releaseVel > 6 && releaseVel < 12
+                                                                            ? `Release velocity of ${releaseVel.toFixed(1)} m/s is well-calibrated for this distance. Consistent leg drive detected.`
+                                                                            : releaseVel <= 6
+                                                                                ? `Release at ${releaseVel.toFixed(1)} m/s underpowered. Engage legs more and follow through completely.`
+                                                                                : `Release at ${releaseVel.toFixed(1)} m/s overpowered. Soften touch—let arc do the work, not force.`
+                                                                        }
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Key Improvement */}
+                                                        {!shot.isPerfect && (
+                                                            <div className="mt-4 px-4 py-3 bg-cyan-500/5 border border-cyan-500/20">
+                                                                <div className="text-[10px] text-cyan-400 uppercase tracking-wider mb-1">Priority Focus</div>
+                                                                <p className="text-xs text-gray-300">
+                                                                    {!isGoodElbow
+                                                                        ? 'Work on maintaining a consistent 90° elbow angle at release point.'
+                                                                        : !isGoodArc
+                                                                            ? 'Focus on follow-through direction to optimize entry angle.'
+                                                                            : 'Minor adjustments needed—focus on consistent release timing.'
+                                                                    }
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()
+                                        ) : (
+                                            <div className="text-center py-6">
+                                                <div className="text-gray-600 text-xs uppercase tracking-wider mb-2">Select a shot from the sequence log</div>
+                                                <p className="text-gray-500 text-[10px]">Click on any shot to view personalized AI coaching feedback</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>

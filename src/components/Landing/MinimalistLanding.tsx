@@ -129,32 +129,32 @@ function StatsPanel({ spot }: { spot: { x: number, z: number } | null }) {
     const probColor = prob > 70 ? 'text-emerald-400' : prob > 40 ? 'text-yellow-400' : 'text-red-400';
 
     return (
-        <div className="absolute right-12 top-1/2 -translate-y-1/2 w-80 space-y-px bg-white/10 backdrop-blur-md border border-white/20 rounded-xl overflow-hidden animate-fade-in">
-            <div className="p-4 bg-black/40 border-b border-white/10">
-                <h3 className="text-xs text-cyan-400 tracking-widest uppercase mb-1">Shot Analysis</h3>
-                <div className="text-2xl text-white font-light">{distFeet.toFixed(1)} <span className="text-sm text-gray-500">FT</span></div>
+        <div className="w-64 bg-black/60 backdrop-blur-sm border border-white/10 animate-fade-in">
+            <div className="px-4 py-3 border-b border-white/10">
+                <h3 className="text-[10px] text-cyan-400/80 tracking-[0.2em] uppercase mb-1">Shot Analysis</h3>
+                <div className="text-2xl text-white/90 font-light tracking-tight">{distFeet.toFixed(1)} <span className="text-xs text-gray-600 font-normal">FT</span></div>
             </div>
 
-            <div className="grid grid-cols-2 bg-black/20">
-                <div className="p-4 border-r border-b border-white/10">
-                    <div className="text-[10px] text-gray-500 uppercase">Optimal Angle</div>
-                    <div className="text-xl text-white">{optimalAngle.toFixed(1)}°</div>
+            <div className="grid grid-cols-2">
+                <div className="px-4 py-3 border-r border-b border-white/5">
+                    <div className="text-[9px] text-gray-600 tracking-wider uppercase">Optimal Angle</div>
+                    <div className="text-lg text-white/80 font-light">{optimalAngle.toFixed(1)}°</div>
                 </div>
-                <div className="p-4 border-b border-white/10">
-                    <div className="text-[10px] text-gray-500 uppercase">Release Vel</div>
-                    <div className="text-xl text-white">{optimalVelocity.toFixed(1)} <span className="text-xs">m/s</span></div>
+                <div className="px-4 py-3 border-b border-white/5">
+                    <div className="text-[9px] text-gray-600 tracking-wider uppercase">Release Vel</div>
+                    <div className="text-lg text-white/80 font-light">{optimalVelocity.toFixed(1)} <span className="text-[10px] text-gray-600">m/s</span></div>
                 </div>
-                <div className="p-4 border-r border-white/10">
-                    <div className="text-[10px] text-gray-500 uppercase">Difficulty</div>
-                    <div className="flex items-center gap-1 mt-1">
+                <div className="px-4 py-3 border-r border-white/5">
+                    <div className="text-[9px] text-gray-600 tracking-wider uppercase">Difficulty</div>
+                    <div className="flex items-center gap-0.5 mt-1.5">
                         {Array.from({ length: 5 }).map((_, i) => (
-                            <div key={i} className={`h-1 flex-1 rounded-full ${i < difficulty / 2 ? 'bg-cyan-500' : 'bg-white/10'}`} />
+                            <div key={i} className={`h-0.5 flex-1 ${i < difficulty / 2 ? 'bg-cyan-500/80' : 'bg-white/5'}`} />
                         ))}
                     </div>
                 </div>
-                <div className="p-4">
-                    <div className="text-[10px] text-gray-500 uppercase">Success Probability</div>
-                    <div className={`text-xl ${probColor}`}>{prob.toFixed(0)}%</div>
+                <div className="px-4 py-3">
+                    <div className="text-[9px] text-gray-600 tracking-wider uppercase">Success Probability</div>
+                    <div className={`text-lg font-light ${probColor}`}>{prob.toFixed(0)}%</div>
                 </div>
             </div>
         </div>
@@ -661,14 +661,12 @@ export default function MinimalistLanding() {
 
                     {/* STAGE: SELECT SPOT */}
                     {stage === 'selecting_spot' && (
-                        <div className="space-y-4 animate-fade-in bg-black/80 p-6 border border-white/10 backdrop-blur-md rounded-lg">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-cyan-500/10 rounded-full">
-                                    <MapPin className="w-5 h-5 text-cyan-400" />
-                                </div>
-                                <h3 className="text-xl text-white font-light">Drop Your Pin</h3>
+                        <div className="animate-fade-in bg-black/50 backdrop-blur-sm border border-white/5 px-5 py-4">
+                            <div className="flex items-center gap-3 mb-2">
+                                <MapPin className="w-4 h-4 text-cyan-500/70" />
+                                <h3 className="text-sm text-white/90 font-light tracking-wide">Drop Your Pin</h3>
                             </div>
-                            <p className="text-sm text-gray-400">
+                            <p className="text-xs text-gray-500 leading-relaxed pl-7">
                                 Click anywhere on the court floor to mark your exact shooting spot.
                             </p>
                         </div>
@@ -676,39 +674,37 @@ export default function MinimalistLanding() {
 
                     {/* STAGE: SELECT COUNT */}
                     {stage === 'selecting_count' && (
-                        <div className="space-y-6 animate-fade-in bg-black/80 p-8 border border-white/10 backdrop-blur-md rounded-lg w-full">
+                        <div className="animate-fade-in bg-black/50 backdrop-blur-sm border border-white/5 px-5 py-4 w-80">
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="p-2 bg-cyan-500/10 rounded-full">
-                                    <BarChart3 className="w-5 h-5 text-cyan-400" />
-                                </div>
+                                <BarChart3 className="w-4 h-4 text-cyan-500/70" />
                                 <div>
-                                    <h3 className="text-xl text-white font-light">Shot Count</h3>
-                                    <p className="text-[10px] text-gray-400 uppercase tracking-wider">Target Reps</p>
+                                    <h3 className="text-sm text-white/90 font-light tracking-wide">Shot Count</h3>
+                                    <p className="text-[9px] text-gray-600 uppercase tracking-wider">Target Reps</p>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-2 gap-2">
                                 {[10, 25, 50, 100].map(num => (
                                     <button
                                         key={num}
                                         onClick={() => handleCountSelect(num)}
-                                        className="flex items-center justify-between px-4 py-3 border border-white/10 hover:border-cyan-500/50 hover:bg-cyan-500/10 transition-all group"
+                                        className="flex items-center justify-between px-3 py-2 border border-white/5 hover:border-cyan-500/30 hover:bg-cyan-500/5 transition-all group"
                                     >
-                                        <span className="text-xl font-light text-white group-hover:text-cyan-400">{num}</span>
-                                        <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-cyan-400 opacity-0 group-hover:opacity-100 transition-all" />
+                                        <span className="text-base font-light text-white/80 group-hover:text-cyan-400">{num}</span>
+                                        <ChevronRight className="w-3 h-3 text-gray-700 group-hover:text-cyan-400 opacity-0 group-hover:opacity-100 transition-all" />
                                     </button>
                                 ))}
-                                <div className="col-span-2 flex gap-2">
+                                <div className="col-span-2 flex gap-2 mt-1">
                                     <input
                                         type="number"
                                         placeholder="Custom"
                                         value={customCount}
                                         onChange={(e) => setCustomCount(e.target.value)}
-                                        className="w-full bg-white/5 border border-white/10 px-4 py-3 text-white focus:border-cyan-500 outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        className="w-full bg-white/5 border border-white/5 px-3 py-2 text-sm text-white/80 placeholder:text-gray-600 focus:border-cyan-500/30 outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                     />
                                     <button
                                         onClick={() => customCount && handleCountSelect(parseInt(customCount))}
-                                        className="bg-cyan-500/20 border border-cyan-500/50 text-cyan-400 px-6 hover:bg-cyan-500 hover:text-black transition-colors"
+                                        className="bg-cyan-500/10 border border-cyan-500/20 text-cyan-500/80 px-4 text-sm hover:bg-cyan-500 hover:text-black transition-colors"
                                     >
                                         GO
                                     </button>
@@ -717,7 +713,7 @@ export default function MinimalistLanding() {
 
                             <button
                                 onClick={() => setStage('selecting_spot')}
-                                className="text-xs text-gray-500 hover:text-white transition-colors mt-4"
+                                className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors mt-3 block"
                             >
                                 ← Back to Spot Selection
                             </button>
@@ -735,7 +731,7 @@ export default function MinimalistLanding() {
             </div>
 
             {/* Dynamic Stats Panel Right Side (Visible during selection) */}
-            <div className="absolute right-0 top-0 h-full w-1/3 z-10 pointer-events-none flex items-center justify-center">
+            <div className="absolute right-12 bottom-20 z-10 pointer-events-none">
                 <StatsPanel spot={stage === 'selecting_spot' ? previewSpot : selectedSpot} />
             </div>
 
