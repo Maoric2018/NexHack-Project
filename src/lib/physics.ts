@@ -9,6 +9,7 @@ export interface PhysicsResult {
     releaseVelocity: number;   // m/s
     arcHeight: number;         // meters
     timeOfFlight: number;      // seconds
+    entryAngle?: number;       // degrees at rim
     trajectoryPoints: { x: number; y: number; z: number }[];
 }
 
@@ -156,6 +157,7 @@ export function calculateTrajectory(
         releaseVelocity: finalVelocity,
         arcHeight,
         timeOfFlight: timeToTarget,
+        entryAngle: Math.atan2(Math.abs(v0y - GRAVITY * timeToTarget), v0x) * (180 / Math.PI),
         trajectoryPoints
     };
 }

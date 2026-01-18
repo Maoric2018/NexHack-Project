@@ -248,11 +248,28 @@ export interface CourtSceneProps {
     physics?: PhysicsResult;
     motionData?: any[][];
     isPlaying: boolean;
+    playerPosition?: { x: number; z: number };
 }
 
-export function CourtScene({ physics, motionData, isPlaying }: CourtSceneProps) {
+export function CourtScene({ physics, motionData, isPlaying, playerPosition }: CourtSceneProps) {
     const [frameIndex, setFrameIndex] = useState(0);
     const handleFrameUpdate = useCallback((idx: number) => setFrameIndex(idx), []);
+
+    // Player Adjustment Group
+    const PlayerGroup = ({ children }: { children: React.ReactNode }) => {
+        const groupRef = useRef<THREE.Group>(null);
+        useFrame(() => {
+            if (groupRef.current && playerPosition) {
+                groupRef.current.position.set(playerPosition.x, 0, playerPosition.z);
+                groupRef.current.lookAt(0, 0, 0); // Face hoop at origin
+            } else if (groupRef.current) {
+                // Default position (Free Throw)
+                groupRef.current.position.set(0, 0, 4.2);
+                groupRef.current.lookAt(0, 0, 0);
+            }
+        });
+        return <group ref={groupRef}>{children}</group>;
+    };
 
     return (
         <div className="w-full h-full rounded-none overflow-hidden bg-black relative">
@@ -261,7 +278,7 @@ export function CourtScene({ physics, motionData, isPlaying }: CourtSceneProps) 
             <div className="absolute inset-0 z-10 pointer-events-none shadow-[inset_0_0_100px_rgba(0,0,0,0.9)]" />
 
             <Canvas dpr={[1, 2]}>
-                <PerspectiveCamera makeDefault position={[0, 2, -6]} fov={50} />
+                <PerspectiveCamera makeDefault position={[0, 5, 10]} fov={50} />
 
                 <PlaybackController
                     motionData={motionData}
@@ -271,22 +288,34 @@ export function CourtScene({ physics, motionData, isPlaying }: CourtSceneProps) 
 
                 <group position={[0, -1, 0]}>
                     <NeonCourt />
-                    <SkeletonPlayer motionData={motionData} isPlaying={isPlaying} frameIndex={frameIndex} />
-                    <GlowingBall
-                        isPlaying={isPlaying}
-                        frameIndex={frameIndex}
-                        totalFrames={motionData?.length || 30}
-                        trajectory={physics?.trajectoryPoints}
-                    />
+
+                    <PlayerGroup>
+                        <SkeletonPlayer motionData={motionData} isPlaying={isPlaying} frameIndex={frameIndex} />
+                        {/* Glowing Balls needs world space or local space? 
+                            Trajectory is calculated in world space presumably relative to player? 
+                            Or specific court coordinates?
+                            GlowingBall receives 'trajectory' which is array of {x,y,z}.
+                            Typically 'physics.ts' generates trajectory from (0,0,0) relative to player?
+                            Ref check: 'calculateTrajectory' uses (0, y0, 0) as start.
+                            So trajectory is LOCAL to player.
+                            So wrapping in PlayerGroup is CORRECT.
+                        */}
+                        <GlowingBall
+                            isPlaying={isPlaying}
+                            frameIndex={frameIndex}
+                            totalFrames={motionData?.length || 30}
+                            trajectory={physics?.trajectoryPoints}
+                        />
+                    </PlayerGroup>
                 </group>
 
                 <OrbitControls
                     target={[0, 1, 2]}
                     maxPolarAngle={Math.PI / 2}
                     minDistance={3}
-                    maxDistance={12}
+                    maxDistance={15}
                     enableZoom={true}
-                    enablePan={false}
+                    enablePan={true}
                 />
             </Canvas>
         </div>

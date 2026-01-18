@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
-import dynamic from 'next/dynamic';
+import nextDynamic from 'next/dynamic';
 import { PosePipeline } from "@/components/Coach/PosePipeline";
 import { ProButton, ProCard } from "@/components/UI/ProComponents";
 import { ProgressRing, StreakBadge, CelebrationOverlay } from "@/components/UI/GameComponents";
@@ -22,7 +22,7 @@ import {
 import { audioCoach } from '@/lib/audioFeedback';
 
 // Dynamic import for 3D
-const CourtScene = dynamic(() => import('@/components/3D/CourtScene').then(m => ({ default: m.CourtScene })), {
+const CourtScene = nextDynamic(() => import('@/components/3D/CourtScene').then(m => ({ default: m.CourtScene })), {
     ssr: false,
     loading: () => <div className="w-full h-full flex items-center justify-center bg-black/50 rounded-xl"><Loader2 className="w-8 h-8 animate-spin text-pro-blue" /></div>
 });
@@ -45,7 +45,12 @@ const GRADE_COLORS: Record<string, string> = {
     'F': 'from-red-600 to-red-800'
 };
 
-export default function CoachPage() {
+import { useSearchParams } from 'next/navigation';
+
+export const dynamic = "force-dynamic";
+
+function CoachContent() {
+    const searchParams = useSearchParams();
     const [view, setView] = useState<ViewMode>('LOCKER_ROOM');
     const [difficulty, setDifficulty] = useState<Difficulty>('NORMAL');
 
@@ -58,8 +63,20 @@ export default function CoachPage() {
     const [showCelebration, setShowCelebration] = useState(false);
     const [sessionGrade, setSessionGrade] = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'F'>('C');
     const [isReplayPlaying, setIsReplayPlaying] = useState(false);
+
     const [physics, setPhysics] = useState<PhysicsResult | undefined>(undefined);
     const [selectedShotId, setSelectedShotId] = useState<number | null>(null);
+    const [playerLocation, setPlayerLocation] = useState<{ x: number, z: number } | undefined>(undefined);
+
+    useEffect(() => {
+        const spotParam = searchParams.get('spot');
+        if (spotParam) {
+            const [x, z] = spotParam.split(',').map(Number);
+            if (!isNaN(x) && !isNaN(z)) {
+                setPlayerLocation({ x, z });
+            }
+        }
+    }, [searchParams]);
 
     // Video Recording
     const [videoBlob, setVideoBlob] = useState<Blob | undefined>(undefined);
@@ -413,6 +430,33 @@ export default function CoachPage() {
 
                         {/* Visual Column */}
                         <div className="lg:col-span-2 flex flex-col gap-6">
+                            {/* Advanced Physics Card */}
+                            <div className="grid grid-cols-4 gap-4 p-4 border border-white/10 bg-white/5 backdrop-blur-sm">
+                                <div>
+                                    <div className="text-[10px] text-gray-500 uppercase tracking-widest">Entry Angle</div>
+                                    <div className="text-xl text-cyan-400 font-light">
+                                        {(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.entryAngle : physics?.entryAngle)?.toFixed(1) || '--'}°
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-[10px] text-gray-500 uppercase tracking-widest">Release Vel</div>
+                                    <div className="text-xl text-white font-light">
+                                        {(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.releaseVelocity : physics?.releaseVelocity)?.toFixed(1) || '--'} m/s
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-[10px] text-gray-500 uppercase tracking-widest">Flight Time</div>
+                                    <div className="text-xl text-white font-light">
+                                        {(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.timeOfFlight : physics?.timeOfFlight)?.toFixed(2) || '--'}s
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-[10px] text-gray-500 uppercase tracking-widest">Max Height</div>
+                                    <div className="text-xl text-white font-light">
+                                        {(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.arcHeight : physics?.arcHeight)?.toFixed(2) || '--'}m
+                                    </div>
+                                </div>
+                            </div>
                             <div className="h-[500px] border border-white/10 bg-black relative">
                                 {/* Corners */}
                                 <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/50" />
@@ -433,6 +477,7 @@ export default function CoachPage() {
                                             physics={selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory : physics}
                                             motionData={selectedShotId ? shots.find(s => s.id === selectedShotId)?.motionData : undefined}
                                             isPlaying={isReplayPlaying}
+                                            playerPosition={playerLocation}
                                         />
                                     </SplitView>
                                 </Suspense>
@@ -449,5 +494,13 @@ export default function CoachPage() {
                 </div>
             )}
         </div>
+    );
+}
+
+export default function CoachPage() {
+    return (
+        <Suspense fallback={<div className="w-full h-screen bg-black flex items-center justify-center text-cyan-500 font-mono text-xs">INITIALIZING_MODULES...</div>}>
+            <CoachContent />
+        </Suspense>
     );
 }
