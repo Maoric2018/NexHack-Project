@@ -10,6 +10,7 @@ import {
 import "@livekit/components-styles";
 import { Mic, MicOff, Volume2 } from "lucide-react";
 import { ShotRecord } from '@/lib/shotTypes';
+import { RoomEvent } from "livekit-client";
 
 interface LiveKitCoachProps {
     onDataChannelReady?: (sendFn: (data: any) => void) => void;
@@ -138,8 +139,8 @@ function CoachListener({ onMessage }: { onMessage: (msg: string) => void }) {
             } catch (e) { console.error(e); }
         };
 
-        room.on("data_received", handleData);
-        return () => { room.off("data_received", handleData); };
+        room.on(RoomEvent.DataReceived, handleData);
+        return () => { room.off(RoomEvent.DataReceived, handleData); };
     }, [room, onMessage]);
 
     return null;

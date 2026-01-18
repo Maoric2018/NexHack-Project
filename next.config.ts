@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
     config.resolve.alias['@mediapipe/pose'] = false;
     return config;
   },
+  devIndicators: {
+    buildActivity: false,
+  } as any,
 };
 
 export default nextConfig;
