@@ -102,7 +102,8 @@ export function CelebrationOverlay({ show, grade, onComplete }: CelebrationOverl
         // Only trigger once when show becomes true
         if (show && !hasTriggeredRef.current) {
             hasTriggeredRef.current = true;
-            setVisible(true);
+            // Defer state update to next tick to avoid synchronous render warning
+            setTimeout(() => setVisible(true), 0);
 
             timerRef.current = setTimeout(() => {
                 setVisible(false);

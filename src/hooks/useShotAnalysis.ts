@@ -89,7 +89,7 @@ export function useShotAnalysis() {
         setAngle(smoothedAngle);
 
         // COOLDOWN
-        if (now - lastTriggerTimeRef.current < 1500) return;
+        if (now - lastTriggerTimeRef.current < 500) return;
 
         // 2. DETECTION LOGIC (Robust)
         const SET_THRESHOLD = isSideView ? 110 : 100; // Allow wider set in side view

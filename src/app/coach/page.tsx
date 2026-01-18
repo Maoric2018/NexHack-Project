@@ -3,11 +3,10 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import nextDynamic from 'next/dynamic';
 import { PosePipeline } from "@/components/Coach/PosePipeline";
-import { CelebrationOverlay } from "@/components/UI/GameComponents";
 import { LiveKitCoach } from "@/components/Coach/LiveKitCoach";
 import { SplitView } from "@/components/FilmRoom/SplitView";
 import { RotateCcw, ScanLine, Loader2 } from "lucide-react";
-import { DebugConsole, useDebugConsole } from "@/components/UI/DebugConsole";
+import { useDebugConsole } from "@/components/UI/DebugConsole";
 import { ShotRecord, ShotMetrics } from '@/lib/shotTypes';
 import {
     calculateTrajectory,
@@ -44,7 +43,6 @@ function CoachContent() {
     const [streak, setStreak] = useState(0);
     const [bestStreak, setBestStreak] = useState(0);
     const [scanResult, setScanResult] = useState<string | null>(null);
-    const [showCelebration, setShowCelebration] = useState(false);
     const [sessionGrade, setSessionGrade] = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'F'>('C');
     const [isReplayPlaying, setIsReplayPlaying] = useState(false);
 
@@ -56,7 +54,7 @@ function CoachContent() {
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
 
-    const { logs, addLog } = useDebugConsole();
+    const { addLog } = useDebugConsole();
 
     // Refs for physics calculations
     const landmarksRef = useRef<{ shoulder: { x: number; y: number }; wrist: { x: number; y: number } } | null>(null);
@@ -97,7 +95,7 @@ function CoachContent() {
                 const vision = new RealtimeVision({
                     apiUrl: 'https://cluster1.overshoot.ai/api/v0.2',
                     apiKey: process.env.NEXT_PUBLIC_OVERSHOOT_KEY || 'ovs_a09cdbe9e1d260eb0627575c4ec85a87',
-                    prompt: 'Briefly describe if this environment is safe for playing basketball. One short sentence.',
+                    prompt: 'Analyze if this area is safe for basketball. Start with "SAFE" or "UNSAFE" followed by a very brief reason.',
                     source: { type: 'camera', cameraFacing: 'environment' },
                     onResult: (result: { result?: string }) => {
                         clearTimeout(timeout);
@@ -171,6 +169,11 @@ function CoachContent() {
 
         setView('FILM_ROOM');
         addLog(`Session ended. Grade: ${grade}`, 'info');
+
+        // Auto-select first shot
+        if (shots.length > 0) {
+            setSelectedShotId(shots[0].id);
+        }
     };
 
     const resetSession = () => {
@@ -199,8 +202,8 @@ function CoachContent() {
         const finalTotal = shots.length + 1; // including current
         // Since state update is async, we use best estimation or trigger effect.
         // For simplicity, we just trigger celebration
-        setSessionGrade('B'); // Placeholder, real calc in handleEndSession
-        setShowCelebration(true);
+        // Directly end session for seamless transition
+        handleEndSession();
     };
 
     const sendShotToCoachRef = useRef<((data: any) => void) | null>(null);
@@ -259,11 +262,11 @@ function CoachContent() {
     return (
         <div className="relative w-full h-screen bg-black overflow-hidden flex flex-col font-mono text-white selection:bg-cyan-500/30">
             {/* DebugConsole removed */}
-            <CelebrationOverlay show={showCelebration} grade={sessionGrade as any} onComplete={() => { setShowCelebration(false); handleEndSession(); }} />
+
 
             {/* SCANNING STATE */}
             {view === 'SCANNING' && (
-                <div className="flex-1 relative z-10 flex flex-col items-center justify-center bg-black/90 backdrop-blur-lg">
+                <div className="flex-1 relative z-10 flex flex-col items-center justify-center bg-black/90 backdrop-blur-lg animate-in fade-in duration-700">
                     <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/5 to-transparent"></div>
                     <div className="space-y-6 text-center z-20">
                         <div className="relative">
@@ -344,7 +347,7 @@ function CoachContent() {
             {/* COURT HUD */}
             {
                 view === 'COURT' && (
-                    <div className="relative w-full h-full">
+                    <div className="relative w-full h-full animate-in fade-in duration-700">
                         <PosePipeline
                             mode="TRAIN"
                             onLog={addLog}
@@ -396,294 +399,295 @@ function CoachContent() {
             {/* FILM ROOM (Analysis) */}
             {
                 view === 'FILM_ROOM' && (
-                    <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-black border-t-2 border-cyan-500/20">
-                        <header className="flex justify-between items-end mb-6 border-b border-white/10 pb-4">
-                            <div>
-                                <div className="text-[10px] text-cyan-500 mb-1">SESSION_ID: {Date.now().toString().slice(-6)}</div>
-                                <h1 className="text-4xl font-light text-white">ANALYSIS REPORT</h1>
-                            </div>
-                            <div className="text-right space-y-1">
-                                <div className="text-xl font-bold text-white">
-                                    {sessionGrade} GRADE
-                                    <span className="ml-2 text-sm text-gray-500 font-normal">
-                                        {(() => {
-                                            switch (sessionGrade) {
-                                                case 'S': return 'ELITE MARKSMAN';
-                                                case 'A': return 'PROFESSIONAL';
-                                                case 'B': return 'COLLEGIATE';
-                                                case 'C': return 'DEVELOPMENTAL';
-                                                case 'D': return 'NOVICE';
-                                                case 'F': return 'NEEDS WORK';
-                                                default: return 'UNRATED';
-                                            }
-                                        })()}
-                                    </span>
+                    <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-black border-t-2 border-cyan-500/20 animate-in fade-in duration-1000">
+                        <div className="animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-500 fill-mode-forwards">
+                            <header className="flex justify-between items-end mb-6 border-b border-white/10 pb-4">
+                                <div>
+                                    <div className="text-[10px] text-cyan-500 mb-1">SESSION_ID: {Date.now().toString().slice(-6)}</div>
+                                    <h1 className="text-4xl font-light text-white">ANALYSIS REPORT</h1>
                                 </div>
-                                <div className="text-[10px] text-gray-500">PERFORMANCE INDEX</div>
-                            </div>
-                        </header>
+                                <div className="text-right space-y-1">
+                                    <div className="text-xl font-bold text-white">
+                                        {sessionGrade} GRADE
+                                        <span className="ml-2 text-sm text-gray-500 font-normal">
+                                            {(() => {
+                                                switch (sessionGrade) {
+                                                    case 'S': return 'ELITE MARKSMAN';
+                                                    case 'A': return 'PROFESSIONAL';
+                                                    case 'B': return 'COLLEGIATE';
+                                                    case 'C': return 'DEVELOPMENTAL';
+                                                    case 'D': return 'NOVICE';
+                                                    case 'F': return 'NEEDS WORK';
+                                                    default: return 'UNRATED';
+                                                }
+                                            })()}
+                                        </span>
+                                    </div>
+                                    <div className="text-[10px] text-gray-500">PERFORMANCE INDEX</div>
+                                </div>
+                            </header>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                            {/* Data Column */}
-                            <div className="lg:col-span-1 space-y-8">
-                                {/* Summary Stats */}
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div>
-                                        <div className="text-3xl font-light text-white">{totalShots > 0 ? Math.round((perfectShots / totalShots) * 100) : 0}%</div>
-                                        <div className="text-[9px] text-gray-500 mt-1 uppercase">Accuracy</div>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                {/* Data Column */}
+                                <div className="lg:col-span-1 space-y-8">
+                                    {/* Summary Stats */}
+                                    <div className="grid grid-cols-2 gap-6">
+                                        <div>
+                                            <div className="text-3xl font-light text-white">{totalShots > 0 ? Math.round((perfectShots / totalShots) * 100) : 0}%</div>
+                                            <div className="text-[9px] text-gray-500 mt-1 uppercase">Accuracy</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-3xl font-light text-cyan-400">{avgAngle}°</div>
+                                            <div className="text-[9px] text-gray-500 mt-1 uppercase">Avg. Release</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-3xl font-light text-purple-400">{bestStreak}</div>
+                                            <div className="text-[9px] text-gray-500 mt-1 uppercase">Max Streak</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-3xl font-light text-white">±{angleStdDev.toFixed(1)}°</div>
+                                            <div className="text-[9px] text-gray-500 mt-1 uppercase">Variance</div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div className="text-3xl font-light text-cyan-400">{avgAngle}°</div>
-                                        <div className="text-[9px] text-gray-500 mt-1 uppercase">Avg. Release</div>
+
+                                    {/* Advanced Physics Card with Comparison */}
+                                    <div className="md:col-span-2 bg-black/40 border border-white/10 rounded-xl p-3 overflow-hidden relative">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <h3 className="text-[10px] text-gray-400 uppercase tracking-widest pl-1">Ballistics Analysis</h3>
+                                            <div className="flex gap-3 text-[9px] text-gray-500 uppercase tracking-wider">
+                                                <div className="flex items-center gap-1"><div className="w-1 h-1 rounded-full bg-cyan-500"></div>Actual</div>
+                                                <div className="flex items-center gap-1"><div className="w-1 h-1 rounded-full bg-white/20"></div>Optimal</div>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-4 gap-px bg-white/5 border border-white/10 rounded-lg overflow-hidden">
+                                            <div className="p-2">
+                                                <div className="text-[9px] text-gray-500 uppercase mb-0.5">Entry Angle</div>
+                                                <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.entryAngle : physics?.entryAngle)?.toFixed(1) || '--'}°</div>
+                                                <div className="text-[9px] text-gray-500 mt-0.5">
+                                                    {playerLocation ? (45 + (Math.sqrt(playerLocation.x ** 2 + (playerLocation.z - 1.575) ** 2) * 0.5)).toFixed(1) : '--'}° <span className="opacity-50">opt</span>
+                                                </div>
+                                            </div>
+                                            <div className="p-2 bg-white/5">
+                                                <div className="text-[9px] text-gray-500 uppercase mb-0.5">Release Vel</div>
+                                                <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.releaseVelocity : physics?.releaseVelocity)?.toFixed(1) || '--'} <span className="text-[9px] text-gray-500">m/s</span></div>
+                                                <div className="text-[9px] text-gray-500 mt-0.5">
+                                                    {playerLocation ? (Math.sqrt(Math.sqrt(playerLocation.x ** 2 + (playerLocation.z - 1.575) ** 2) * 9.8) * 1.8).toFixed(1) : '--'} <span className="opacity-50">opt</span>
+                                                </div>
+                                            </div>
+                                            <div className="p-2">
+                                                <div className="text-[9px] text-gray-500 uppercase mb-0.5">Flight Time</div>
+                                                <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.timeOfFlight : physics?.timeOfFlight)?.toFixed(2) || '--'}s</div>
+                                                <div className="text-[9px] text-gray-500 mt-0.5 tracking-wide">
+                                                    IDEAL <span className="text-emerald-400">{(physics?.timeOfFlight || 0) > 1.0 ? '✓' : ''}</span>
+                                                </div>
+                                            </div>
+                                            <div className="p-2 bg-white/5">
+                                                <div className="text-[9px] text-gray-500 uppercase mb-0.5">Max Height</div>
+                                                <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.arcHeight : physics?.arcHeight)?.toFixed(2) || '--'}m</div>
+                                                <div className="text-[9px] text-gray-500 mt-0.5">
+                                                    Arc Ratio <span className="text-cyan-400">1.4</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div className="text-3xl font-light text-purple-400">{bestStreak}</div>
-                                        <div className="text-[9px] text-gray-500 mt-1 uppercase">Max Streak</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-3xl font-light text-white">±{angleStdDev.toFixed(1)}°</div>
-                                        <div className="text-[9px] text-gray-500 mt-1 uppercase">Variance</div>
+
+                                    {/* Shot List */}
+                                    <div className="border-t border-white/10 pt-4">
+                                        <h3 className="text-[10px] text-gray-500 uppercase mb-3">Sequence Log</h3>
+                                        <div className="h-56 overflow-y-auto space-y-px bg-white/5">
+                                            {shots.map((shot, idx) => (
+                                                <button
+                                                    key={shot.id}
+                                                    onClick={() => setSelectedShotId(shot.id)}
+                                                    className={`w-full flex justify-between px-3 py-2 text-[10px] hover:bg-white/10 transition-colors ${selectedShotId === shot.id ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400'}`}
+                                                >
+                                                    <span>{String(idx + 1).padStart(2, '0')}</span>
+                                                    <span className={shot.isPerfect ? "text-cyan-400" : "text-white/30"}>{shot.isPerfect ? "SWISH" : "MISS"}</span>
+                                                    <span className="font-mono">{Math.round(shot.elbowAngle)}°</span>
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
 
-                                {/* Advanced Physics Card with Comparison */}
-                                <div className="md:col-span-2 bg-black/40 border border-white/10 rounded-xl p-3 overflow-hidden relative">
-                                    <div className="flex justify-between items-start mb-3">
-                                        <h3 className="text-[10px] text-gray-400 uppercase tracking-widest pl-1">Ballistics Analysis</h3>
-                                        <div className="flex gap-3 text-[9px] text-gray-500 uppercase tracking-wider">
-                                            <div className="flex items-center gap-1"><div className="w-1 h-1 rounded-full bg-cyan-500"></div>Actual</div>
-                                            <div className="flex items-center gap-1"><div className="w-1 h-1 rounded-full bg-white/20"></div>Optimal</div>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-4 gap-px bg-white/5 border border-white/10 rounded-lg overflow-hidden">
-                                        <div className="p-2">
-                                            <div className="text-[9px] text-gray-500 uppercase mb-0.5">Entry Angle</div>
-                                            <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.entryAngle : physics?.entryAngle)?.toFixed(1) || '--'}°</div>
-                                            <div className="text-[9px] text-gray-500 mt-0.5">
-                                                {playerLocation ? (45 + (Math.sqrt(playerLocation.x ** 2 + (playerLocation.z - 1.575) ** 2) * 0.5)).toFixed(1) : '--'}° <span className="opacity-50">opt</span>
-                                            </div>
-                                        </div>
-                                        <div className="p-2 bg-white/5">
-                                            <div className="text-[9px] text-gray-500 uppercase mb-0.5">Release Vel</div>
-                                            <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.releaseVelocity : physics?.releaseVelocity)?.toFixed(1) || '--'} <span className="text-[9px] text-gray-500">m/s</span></div>
-                                            <div className="text-[9px] text-gray-500 mt-0.5">
-                                                {playerLocation ? (Math.sqrt(Math.sqrt(playerLocation.x ** 2 + (playerLocation.z - 1.575) ** 2) * 9.8) * 1.8).toFixed(1) : '--'} <span className="opacity-50">opt</span>
-                                            </div>
-                                        </div>
-                                        <div className="p-2">
-                                            <div className="text-[9px] text-gray-500 uppercase mb-0.5">Flight Time</div>
-                                            <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.timeOfFlight : physics?.timeOfFlight)?.toFixed(2) || '--'}s</div>
-                                            <div className="text-[9px] text-gray-500 mt-0.5 tracking-wide">
-                                                IDEAL <span className="text-emerald-400">{(physics?.timeOfFlight || 0) > 1.0 ? '✓' : ''}</span>
-                                            </div>
-                                        </div>
-                                        <div className="p-2 bg-white/5">
-                                            <div className="text-[9px] text-gray-500 uppercase mb-0.5">Max Height</div>
-                                            <div className="text-sm text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.arcHeight : physics?.arcHeight)?.toFixed(2) || '--'}m</div>
-                                            <div className="text-[9px] text-gray-500 mt-0.5">
-                                                Arc Ratio <span className="text-cyan-400">1.4</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                {/* Visual Column */}
+                                <div className="lg:col-span-2 flex flex-col gap-3">
+                                    {/* Video & 3D Reconstruction - Shifted Up */}
+                                    <div className="h-[320px] border border-white/10 bg-black relative">
+                                        {/* Corners */}
+                                        <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/50" />
+                                        <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/50" />
+                                        <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-white/50" />
+                                        <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white/50" />
 
-                                {/* Shot List */}
-                                <div className="border-t border-white/10 pt-4">
-                                    <h3 className="text-[10px] text-gray-500 uppercase mb-3">Sequence Log</h3>
-                                    <div className="h-56 overflow-y-auto space-y-px bg-white/5">
-                                        {shots.map((shot, idx) => (
-                                            <button
-                                                key={shot.id}
-                                                onClick={() => setSelectedShotId(shot.id)}
-                                                className={`w-full flex justify-between px-3 py-2 text-[10px] hover:bg-white/10 transition-colors ${selectedShotId === shot.id ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400'}`}
+                                        <Suspense fallback={<div className="p-8 text-xs text-gray-500">LOADING_VISUALIZER...</div>}>
+                                            <SplitView
+                                                videoBlob={videoBlob}
+                                                onPlayStateChange={setIsReplayPlaying}
+                                                clipRange={selectedShotId ? {
+                                                    start: Math.max(0, (shots.find(s => s.id === selectedShotId)?.videoTimestamp || 0) - 1.5),
+                                                    end: (shots.find(s => s.id === selectedShotId)?.videoTimestamp || 0) + 1.0
+                                                } : null}
                                             >
-                                                <span>{String(idx + 1).padStart(2, '0')}</span>
-                                                <span className={shot.isPerfect ? "text-cyan-400" : "text-white/30"}>{shot.isPerfect ? "SWISH" : "MISS"}</span>
-                                                <span className="font-mono">{Math.round(shot.elbowAngle)}°</span>
-                                            </button>
-                                        ))}
+                                                <CourtScene
+                                                    physics={selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory : physics}
+                                                    motionData={selectedShotId ? shots.find(s => s.id === selectedShotId)?.motionData : undefined}
+                                                    isPlaying={isReplayPlaying}
+                                                    playerPosition={playerLocation}
+                                                />
+                                            </SplitView>
+                                        </Suspense>
                                     </div>
-                                </div>
-                            </div>
 
-                            {/* Visual Column */}
-                            <div className="lg:col-span-2 flex flex-col gap-3">
-                                {/* Video & 3D Reconstruction - Shifted Up */}
-                                <div className="h-[320px] border border-white/10 bg-black relative">
-                                    {/* Corners */}
-                                    <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/50" />
-                                    <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/50" />
-                                    <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-white/50" />
-                                    <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white/50" />
+                                    <div className="flex justify-between items-center text-[9px] text-gray-600 uppercase">
+                                        <div>Interactive 3D Replay Module</div>
+                                        <button onClick={resetSession} className="text-white hover:text-cyan-400 flex items-center gap-2">
+                                            <RotateCcw className="w-3 h-3" /> Reset System
+                                        </button>
+                                    </div>
 
-                                    <Suspense fallback={<div className="p-8 text-xs text-gray-500">LOADING_VISUALIZER...</div>}>
-                                        <SplitView
-                                            videoBlob={videoBlob}
-                                            onPlayStateChange={setIsReplayPlaying}
-                                            clipRange={selectedShotId ? {
-                                                start: Math.max(0, (shots.find(s => s.id === selectedShotId)?.videoTimestamp || 0) - 1.5),
-                                                end: (shots.find(s => s.id === selectedShotId)?.videoTimestamp || 0) + 1.0
-                                            } : null}
-                                        >
-                                            <CourtScene
-                                                physics={selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory : physics}
-                                                motionData={selectedShotId ? shots.find(s => s.id === selectedShotId)?.motionData : undefined}
-                                                isPlaying={isReplayPlaying}
-                                                playerPosition={playerLocation}
-                                            />
-                                        </SplitView>
-                                    </Suspense>
-                                </div>
-
-                                <div className="flex justify-between items-center text-[9px] text-gray-600 uppercase">
-                                    <div>Interactive 3D Replay Module</div>
-                                    <button onClick={resetSession} className="text-white hover:text-cyan-400 flex items-center gap-2">
-                                        <RotateCcw className="w-3 h-3" /> Reset System
-                                    </button>
-                                </div>
-
-                                {/* Overshoot AI Coach Feedback Section */}
-                                <div className="border border-white/10 bg-black/60 backdrop-blur-sm flex-1">
-                                    {/* Header */}
-                                    <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
-                                        <div className="flex items-center gap-2">
-                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <circle cx="12" cy="12" r="10" stroke="url(#overshoot-coach-gradient)" strokeWidth="2" />
-                                                <circle cx="12" cy="12" r="4" fill="url(#overshoot-coach-gradient)" />
-                                                <defs>
-                                                    <linearGradient id="overshoot-coach-gradient" x1="0" y1="0" x2="24" y2="24">
-                                                        <stop stopColor="#22d3ee" />
-                                                        <stop offset="1" stopColor="#3b82f6" />
-                                                    </linearGradient>
-                                                </defs>
-                                            </svg>
-                                            <div>
-                                                <h3 className="text-xs text-white font-light tracking-wide">AI Coach Analysis</h3>
-                                                <p className="text-[8px] text-gray-600 uppercase tracking-wider">Powered by Overshoot</p>
+                                    {/* Overshoot AI Coach Feedback Section */}
+                                    <div className="border border-white/10 bg-black/60 backdrop-blur-sm flex-1">
+                                        {/* Header */}
+                                        <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
+                                            <div className="flex items-center gap-2">
+                                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <circle cx="12" cy="12" r="10" stroke="url(#overshoot-coach-gradient)" strokeWidth="2" />
+                                                    <circle cx="12" cy="12" r="4" fill="url(#overshoot-coach-gradient)" />
+                                                    <defs>
+                                                        <linearGradient id="overshoot-coach-gradient" x1="0" y1="0" x2="24" y2="24">
+                                                            <stop stopColor="#22d3ee" />
+                                                            <stop offset="1" stopColor="#3b82f6" />
+                                                        </linearGradient>
+                                                    </defs>
+                                                </svg>
+                                                <div>
+                                                    <h3 className="text-xs text-white font-light tracking-wide">AI Coach Analysis</h3>
+                                                    <p className="text-[8px] text-gray-600 uppercase tracking-wider">Powered by Overshoot</p>
+                                                </div>
                                             </div>
+                                            {selectedShotId && (
+                                                <div className="text-[9px] text-cyan-400/70 uppercase tracking-wider">
+                                                    Shot #{String(selectedShotId).padStart(2, '0')}
+                                                </div>
+                                            )}
                                         </div>
-                                        {selectedShotId && (
-                                            <div className="text-[9px] text-cyan-400/70 uppercase tracking-wider">
-                                                Shot #{String(selectedShotId).padStart(2, '0')}
-                                            </div>
-                                        )}
-                                    </div>
 
-                                    {/* Feedback Content */}
-                                    <div className="p-3 space-y-3">
-                                        {selectedShotId ? (
-                                            (() => {
-                                                const shot = shots.find(s => s.id === selectedShotId);
-                                                if (!shot) return null;
+                                        {/* Feedback Content */}
+                                        <div className="p-3 space-y-3">
+                                            {selectedShotId ? (
+                                                (() => {
+                                                    const shot = shots.find(s => s.id === selectedShotId);
+                                                    if (!shot) return null;
 
-                                                // Generate personalized feedback based on shot metrics
-                                                const entryAngle = shot.trajectory?.entryAngle || 0;
-                                                const releaseVel = shot.trajectory?.releaseVelocity || 0;
-                                                const elbowAngle = shot.elbowAngle;
-                                                const optimalEntryAngle = playerLocation
-                                                    ? 45 + (Math.sqrt(playerLocation.x ** 2 + (playerLocation.z - 1.575) ** 2) * 0.5)
-                                                    : 50;
+                                                    // Generate personalized feedback based on shot metrics
+                                                    const entryAngle = shot.trajectory?.entryAngle || 0;
+                                                    const releaseVel = shot.trajectory?.releaseVelocity || 0;
+                                                    const elbowAngle = shot.elbowAngle;
+                                                    const optimalEntryAngle = playerLocation
+                                                        ? 45 + (Math.sqrt(playerLocation.x ** 2 + (playerLocation.z - 1.575) ** 2) * 0.5)
+                                                        : 50;
 
-                                                const angleDiff = entryAngle - optimalEntryAngle;
-                                                const isGoodArc = Math.abs(angleDiff) < 5;
-                                                const isGoodElbow = elbowAngle >= 85 && elbowAngle <= 100;
+                                                    const angleDiff = entryAngle - optimalEntryAngle;
+                                                    const isGoodArc = Math.abs(angleDiff) < 5;
+                                                    const isGoodElbow = elbowAngle >= 85 && elbowAngle <= 100;
 
-                                                return (
-                                                    <>
-                                                        {/* Shot Result Badge */}
-                                                        <div className="flex items-center gap-3">
-                                                            <div className={`px-2 py-0.5 text-[10px] uppercase tracking-wider ${shot.isPerfect
-                                                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                                                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                                                                }`}>
-                                                                {shot.isPerfect ? 'SWISH' : 'MISS'}
+                                                    return (
+                                                        <>
+                                                            {/* Shot Result Badge */}
+                                                            <div className="flex items-center gap-3">
+                                                                <div className={`px-2 py-0.5 text-[10px] uppercase tracking-wider ${shot.isPerfect
+                                                                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                                                                    : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                                                    }`}>
+                                                                    {shot.isPerfect ? 'SWISH' : 'MISS'}
+                                                                </div>
+                                                                <span className="text-[10px] text-gray-500">
+                                                                    {shot.isPerfect ? 'Clean entry, optimal form detected.' : 'Form correction recommended.'}
+                                                                </span>
                                                             </div>
-                                                            <span className="text-[10px] text-gray-500">
-                                                                {shot.isPerfect ? 'Clean entry, optimal form detected.' : 'Form correction recommended.'}
-                                                            </span>
-                                                        </div>
 
-                                                        {/* Detailed Feedback */}
-                                                        <div className="space-y-2">
-                                                            {/* Arc Analysis */}
-                                                            <div className="flex items-start gap-3">
-                                                                <div className={`w-0.5 h-full min-h-[32px] ${isGoodArc ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                                                <div>
-                                                                    <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">Arc Analysis</div>
-                                                                    <p className="text-[11px] text-gray-300 leading-relaxed">
-                                                                        {isGoodArc
-                                                                            ? `Entry angle of ${entryAngle.toFixed(1)}° is within optimal range. Excellent arc control.`
-                                                                            : angleDiff > 0
-                                                                                ? `Entry angle ${entryAngle.toFixed(1)}° is ${angleDiff.toFixed(1)}° too high. Reduce arc.`
-                                                                                : `Entry angle ${entryAngle.toFixed(1)}° is ${Math.abs(angleDiff).toFixed(1)}° too flat. increase arc.`
-                                                                        }
-                                                                    </p>
+                                                            {/* Detailed Feedback */}
+                                                            <div className="space-y-2">
+                                                                {/* Arc Analysis */}
+                                                                <div className="flex items-start gap-3">
+                                                                    <div className={`w-0.5 h-full min-h-[32px] ${isGoodArc ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                    <div>
+                                                                        <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">Arc Analysis</div>
+                                                                        <p className="text-[11px] text-gray-300 leading-relaxed">
+                                                                            {isGoodArc
+                                                                                ? `Entry angle of ${entryAngle.toFixed(1)}° is within optimal range. Excellent arc control.`
+                                                                                : angleDiff > 0
+                                                                                    ? `Entry angle ${entryAngle.toFixed(1)}° is ${angleDiff.toFixed(1)}° too high. Reduce arc.`
+                                                                                    : `Entry angle ${entryAngle.toFixed(1)}° is ${Math.abs(angleDiff).toFixed(1)}° too flat. increase arc.`
+                                                                            }
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Elbow Analysis */}
+                                                                <div className="flex items-start gap-3">
+                                                                    <div className={`w-0.5 h-full min-h-[32px] ${isGoodElbow ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                    <div>
+                                                                        <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">Form Check</div>
+                                                                        <p className="text-[11px] text-gray-300 leading-relaxed">
+                                                                            {isGoodElbow
+                                                                                ? `Elbow at ${elbowAngle}° shows proper alignment.`
+                                                                                : elbowAngle < 85
+                                                                                    ? `Elbow angle ${elbowAngle}° is too acute. Aim for 90°.`
+                                                                                    : `Elbow angle ${elbowAngle}° is too wide. Tuck it in.`
+                                                                            }
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Release Analysis */}
+                                                                <div className="flex items-start gap-3">
+                                                                    <div className={`w-0.5 h-full min-h-[32px] ${releaseVel > 6 && releaseVel < 12 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                                                    <div>
+                                                                        <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">Power Output</div>
+                                                                        <p className="text-[11px] text-gray-300 leading-relaxed">
+                                                                            {releaseVel > 6 && releaseVel < 12
+                                                                                ? `Velocity of ${releaseVel.toFixed(1)} m/s is calibrated correctly.`
+                                                                                : releaseVel <= 6
+                                                                                    ? `Release at ${releaseVel.toFixed(1)} m/s underpowered.`
+                                                                                    : `Release at ${releaseVel.toFixed(1)} m/s overpowered.`
+                                                                            }
+                                                                        </p>
+                                                                    </div>
                                                                 </div>
                                                             </div>
 
-                                                            {/* Elbow Analysis */}
-                                                            <div className="flex items-start gap-3">
-                                                                <div className={`w-0.5 h-full min-h-[32px] ${isGoodElbow ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                                                <div>
-                                                                    <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">Form Check</div>
-                                                                    <p className="text-[11px] text-gray-300 leading-relaxed">
-                                                                        {isGoodElbow
-                                                                            ? `Elbow at ${elbowAngle}° shows proper alignment.`
-                                                                            : elbowAngle < 85
-                                                                                ? `Elbow angle ${elbowAngle}° is too acute. Aim for 90°.`
-                                                                                : `Elbow angle ${elbowAngle}° is too wide. Tuck it in.`
+                                                            {/* Key Improvement */}
+                                                            {!shot.isPerfect && (
+                                                                <div className="mt-2 px-3 py-2 bg-cyan-500/5 border border-cyan-500/20">
+                                                                    <div className="text-[9px] text-cyan-400 uppercase tracking-wider mb-0.5">Priority Focus</div>
+                                                                    <p className="text-[10px] text-gray-300">
+                                                                        {!isGoodElbow
+                                                                            ? 'Work on maintaining a consistent 90° elbow angle.'
+                                                                            : !isGoodArc
+                                                                                ? 'Focus on follow-through direction.'
+                                                                                : 'Focus on consistent timing.'
                                                                         }
                                                                     </p>
                                                                 </div>
-                                                            </div>
-
-                                                            {/* Release Analysis */}
-                                                            <div className="flex items-start gap-3">
-                                                                <div className={`w-0.5 h-full min-h-[32px] ${releaseVel > 6 && releaseVel < 12 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                                                <div>
-                                                                    <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">Power Output</div>
-                                                                    <p className="text-[11px] text-gray-300 leading-relaxed">
-                                                                        {releaseVel > 6 && releaseVel < 12
-                                                                            ? `Velocity of ${releaseVel.toFixed(1)} m/s is calibrated correctly.`
-                                                                            : releaseVel <= 6
-                                                                                ? `Release at ${releaseVel.toFixed(1)} m/s underpowered.`
-                                                                                : `Release at ${releaseVel.toFixed(1)} m/s overpowered.`
-                                                                        }
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Key Improvement */}
-                                                        {!shot.isPerfect && (
-                                                            <div className="mt-2 px-3 py-2 bg-cyan-500/5 border border-cyan-500/20">
-                                                                <div className="text-[9px] text-cyan-400 uppercase tracking-wider mb-0.5">Priority Focus</div>
-                                                                <p className="text-[10px] text-gray-300">
-                                                                    {!isGoodElbow
-                                                                        ? 'Work on maintaining a consistent 90° elbow angle.'
-                                                                        : !isGoodArc
-                                                                            ? 'Focus on follow-through direction.'
-                                                                            : 'Focus on consistent timing.'
-                                                                    }
-                                                                </p>
-                                                            </div>
-                                                        )}
-                                                    </>
-                                                );
-                                            })()
-                                        ) : (
-                                            <div className="text-center py-6">
-                                                <div className="text-gray-600 text-[10px] uppercase tracking-wider mb-1">Select a shot from the sequence log</div>
-                                                <p className="text-gray-500 text-[9px]">Click on any shot to view personalized AI coaching feedback</p>
-                                            </div>
-                                        )}
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()
+                                            ) : (
+                                                <div className="text-center py-6">
+                                                    <div className="text-gray-600 text-[10px] uppercase tracking-wider mb-1">Select a shot from the sequence log</div>
+                                                    <p className="text-gray-500 text-[9px]">Click on any shot to view personalized AI coaching feedback</p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                )
-            }
+                )}
         </div >
     );
 }

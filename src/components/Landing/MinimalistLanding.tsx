@@ -537,6 +537,7 @@ export default function MinimalistLanding() {
     const trajectories = useMemo(() => {
         const shots: any[] = [];
         const count = 20;
+        // eslint-disable-next-line
         const r = (min: number, max: number) => Math.random() * (max - min) + min;
         const zones = [[-7, -5], [5, 7], [-6, -3], [3, 6], [-2, 2]]; // Ranges
 
