@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@livekit/components-react": "^2.9.19",
+    "@livekit/components-styles": "^1.2.0",
     "@overshoot/sdk": "^0.1.0-alpha.2",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",

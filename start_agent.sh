@@ -1,6 +1,4 @@
 #!/bin/bash
 cd agent
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python main.py dev
+# Using explicit python3.11 path where dependencies are installed
+/opt/homebrew/bin/python3.11 main.py dev
