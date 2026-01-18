@@ -20,24 +20,80 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 
 function CameraRig({ stage }: { stage: 'landing' | 'selecting_spot' | 'selecting_count' }) {
     useFrame((state, delta) => {
-        // Landing: Top-Left Isometric [-20, 20, 20], Zoom 35
-        // Selection: Top Down [0, 50, 0], Zoom 40 for distinct map-like selection.
+        // Shift focus: center on Y=1 to bring scene up
+        const targetLookAt = new THREE.Vector3(0, 1, 0);
 
+        // Landing: Slightly left-above, Selection: Top-down centered on court
         const targetPos = stage === 'landing'
-            ? new THREE.Vector3(-20, 20, 20) // Top Left
-            : new THREE.Vector3(0, 50, 10); // Slight angle for selection
+            ? new THREE.Vector3(-15, 18, 18)
+            : new THREE.Vector3(0, 40, 5);
 
-        const targetZoom = stage === 'landing' ? 25 : 40;
-        const targetLookAt = stage === 'landing' ? new THREE.Vector3(0, 0, 0) : new THREE.Vector3(0, 0, 5);
+        const targetZoom = stage === 'landing' ? 40 : 55;
 
-        // Smooth interpolate
-        state.camera.position.lerp(targetPos, delta * 2.0); // Slightly slower ease
+        state.camera.position.lerp(targetPos, delta * 2.0);
         state.camera.zoom = THREE.MathUtils.lerp(state.camera.zoom, targetZoom, delta * 2.0);
-
         state.camera.lookAt(targetLookAt);
         state.camera.updateProjectionMatrix();
     });
     return null;
+}
+
+// ------------------------------------------------------------------
+// STATS PANEL COMPONENT
+// ------------------------------------------------------------------
+
+function StatsPanel({ spot }: { spot: { x: number, z: number } | null }) {
+    if (!spot) return null;
+
+    // Physics / Game Logic
+    const hoopZ = 1.575;
+    const dx = spot.x;
+    const dz = spot.z - hoopZ;
+    const distMeters = Math.sqrt(dx * dx + dz * dz);
+    const distFeet = distMeters * 3.28;
+
+    // Heuristic Stats
+    const optimalAngle = 45 + (distMeters * 0.5);
+    const optimalVelocity = Math.sqrt(distMeters * 9.8) * 1.8; // Rough physics approx
+    const difficulty = Math.min(10, Math.max(1, Math.round(distFeet / 3))); // 1-10 scale
+
+    // Non-linear success prob
+    // Sigmoid-ish decay based on distance: easy < 10ft, hard > 25ft
+    const prob = Math.max(5, Math.min(99, 100 / (1 + Math.exp((distFeet - 18) * 0.15)) * 1.1));
+
+    const probColor = prob > 70 ? 'text-emerald-400' : prob > 40 ? 'text-yellow-400' : 'text-red-400';
+
+    return (
+        <div className="absolute right-12 top-1/2 -translate-y-1/2 w-80 space-y-px bg-white/10 backdrop-blur-md border border-white/20 rounded-xl overflow-hidden animate-fade-in">
+            <div className="p-4 bg-black/40 border-b border-white/10">
+                <h3 className="text-xs text-cyan-400 tracking-widest uppercase mb-1">Shot Analysis</h3>
+                <div className="text-2xl text-white font-light">{distFeet.toFixed(1)} <span className="text-sm text-gray-500">FT</span></div>
+            </div>
+
+            <div className="grid grid-cols-2 bg-black/20">
+                <div className="p-4 border-r border-b border-white/10">
+                    <div className="text-[10px] text-gray-500 uppercase">Optimal Angle</div>
+                    <div className="text-xl text-white">{optimalAngle.toFixed(1)}°</div>
+                </div>
+                <div className="p-4 border-b border-white/10">
+                    <div className="text-[10px] text-gray-500 uppercase">Release Vel</div>
+                    <div className="text-xl text-white">{optimalVelocity.toFixed(1)} <span className="text-xs">m/s</span></div>
+                </div>
+                <div className="p-4 border-r border-white/10">
+                    <div className="text-[10px] text-gray-500 uppercase">Difficulty</div>
+                    <div className="flex items-center gap-1 mt-1">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                            <div key={i} className={`h-1 flex-1 rounded-full ${i < difficulty / 2 ? 'bg-cyan-500' : 'bg-white/10'}`} />
+                        ))}
+                    </div>
+                </div>
+                <div className="p-4">
+                    <div className="text-[10px] text-gray-500 uppercase">Success Probability</div>
+                    <div className={`text-xl ${probColor}`}>{prob.toFixed(0)}%</div>
+                </div>
+            </div>
+        </div>
+    );
 }
 
 // ------------------------------------------------------------------
@@ -285,17 +341,31 @@ function SwishManager({ count }: { count: number }) {
     );
 }
 
-function CourtInteraction({ active, onSelect, selectedPoint }: { active: boolean, onSelect: (pt: { x: number, z: number }) => void, selectedPoint: { x: number, z: number } | null }) {
+function CourtInteraction({ active, onSelect, selectedPoint, onHover }: {
+    active: boolean,
+    onSelect: (pt: { x: number, z: number }) => void,
+    selectedPoint: { x: number, z: number } | null,
+    onHover: (pt: { x: number, z: number } | null) => void
+}) {
     const groupRef = useRef<THREE.Group>(null);
     const [hovered, setHovered] = useState(false);
     const [previewSpot, setPreviewSpot] = useState<{ x: number, z: number } | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [pinHovered, setPinHovered] = useState(false);
     useCursor(hovered && active);
 
     const handlePointerMove = (e: any) => {
-        if (!active || !groupRef.current) return;
+        if (!groupRef.current) return;
         e.stopPropagation();
         const pt = groupRef.current.worldToLocal(e.point.clone());
-        setPreviewSpot({ x: pt.x, z: pt.z });
+        const spot = { x: pt.x, z: pt.z };
+
+        if (isDragging) {
+            onSelect(spot); // Update pin position while dragging
+        } else if (active) {
+            setPreviewSpot(spot);
+            onHover(spot);
+        }
     };
 
     const handleClick = (e: any) => {
@@ -305,25 +375,39 @@ function CourtInteraction({ active, onSelect, selectedPoint }: { active: boolean
         onSelect({ x: pt.x, z: pt.z });
     };
 
+    const handlePointerOut = () => {
+        setHovered(false);
+        setPreviewSpot(null);
+        onHover(null);
+        if (isDragging) setIsDragging(false); // End drag on leave
+    };
+
+    const handlePinPointerDown = (e: any) => {
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handlePinPointerUp = () => {
+        setIsDragging(false);
+    };
+
     return (
-        <group ref={groupRef}>
-            {/* Invisible Hit Plane - Matches Court Dimensions */}
-            {active && (
-                <mesh
-                    rotation={[-Math.PI / 2, 0, 0]}
-                    position={[0, 0.01, 7]}
-                    onPointerOver={() => setHovered(true)}
-                    onPointerOut={() => { setHovered(false); setPreviewSpot(null); }}
-                    onPointerMove={handlePointerMove}
-                    onClick={handleClick}
-                >
-                    <planeGeometry args={[15, 14]} />
-                    <meshBasicMaterial color="black" visible={false} />
-                </mesh>
-            )}
+        <group ref={groupRef} onPointerUp={handlePinPointerUp}>
+            {/* Invisible Hit Plane - Matches Court Dimensions, Always active for drag */}
+            <mesh
+                rotation={[-Math.PI / 2, 0, 0]}
+                position={[0, 0.01, 7]}
+                onPointerOver={() => setHovered(true)}
+                onPointerOut={handlePointerOut}
+                onPointerMove={handlePointerMove}
+                onClick={handleClick}
+            >
+                <planeGeometry args={[15, 14]} />
+                <meshBasicMaterial color="black" visible={false} />
+            </mesh>
 
             {/* Ghost Pin (Preview) */}
-            {active && previewSpot && (
+            {active && previewSpot && !isDragging && (
                 <group position={[previewSpot.x, 0, previewSpot.z]}>
                     <mesh position={[0, 0.5, 0]}>
                         <cylinderGeometry args={[0.05, 0.02, 1, 8]} />
@@ -336,24 +420,33 @@ function CourtInteraction({ active, onSelect, selectedPoint }: { active: boolean
                 </group>
             )}
 
-            {/* Selected Pin */}
+            {/* Selected Pin (Draggable) */}
             {selectedPoint && (
-                <group position={[selectedPoint.x, 0, selectedPoint.z]}>
-                    <mesh position={[0, 0.5, 0]}>
-                        <cylinderGeometry args={[0.05, 0.02, 1, 8]} />
-                        <meshBasicMaterial color="#06b6d4" />
+                <group
+                    position={[selectedPoint.x, 0, selectedPoint.z]}
+                    onPointerDown={handlePinPointerDown}
+                    onPointerOver={() => setPinHovered(true)}
+                    onPointerOut={() => setPinHovered(false)}
+                >
+                    {/* Pin Body */}
+                    <mesh position={[0, 0.5, 0]} scale={pinHovered || isDragging ? 1.15 : 1}>
+                        <cylinderGeometry args={[0.06, 0.025, 1, 8]} />
+                        <meshBasicMaterial color={isDragging ? '#22d3ee' : '#06b6d4'} />
                     </mesh>
-                    <mesh position={[0, 1, 0]}>
-                        <sphereGeometry args={[0.15, 16, 16]} />
+                    {/* Pin Head */}
+                    <mesh position={[0, 1, 0]} scale={pinHovered || isDragging ? 1.2 : 1}>
+                        <sphereGeometry args={[0.18, 16, 16]} />
                         <meshBasicMaterial color="#22d3ee" toneMapped={false} />
                     </mesh>
+                    {/* Ground Ripple */}
                     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-                        <ringGeometry args={[0.2, 0.3, 32]} />
-                        <meshBasicMaterial color="#06b6d4" transparent opacity={0.5} />
+                        <ringGeometry args={[0.2, isDragging || pinHovered ? 0.4 : 0.3, 32]} />
+                        <meshBasicMaterial color="#06b6d4" transparent opacity={isDragging ? 0.8 : 0.5} />
                     </mesh>
-                    <Html position={[0, 1.5, 0]} center pointerEvents="none">
-                        <div className="px-2 py-1 bg-black/80 backdrop-blur text-[10px] text-cyan-400 border border-cyan-500/50 rounded whitespace-nowrap">
-                            SHOOTING SPOT
+                    {/* Label */}
+                    <Html position={[0, 1.7, 0]} center pointerEvents="none">
+                        <div className={`px-2 py-1 bg-black/80 backdrop-blur text-[10px] text-cyan-400 border border-cyan-500/50 rounded whitespace-nowrap transition-transform ${pinHovered && !isDragging ? 'scale-105' : ''}`}>
+                            {isDragging ? 'DRAGGING...' : 'SHOOTING SPOT'}
                         </div>
                     </Html>
                 </group>
@@ -369,6 +462,8 @@ export default function MinimalistLanding() {
     // Interaction State
     const [stage, setStage] = useState<'landing' | 'selecting_spot' | 'selecting_count'>('landing');
     const [selectedSpot, setSelectedSpot] = useState<{ x: number, z: number } | null>(null);
+    const [previewSpot, setPreviewSpot] = useState<{ x: number, z: number } | null>(null);
+    const [customCount, setCustomCount] = useState("");
 
     const handleSwish = () => setSwishCount(c => c + 1);
 
@@ -391,7 +486,8 @@ export default function MinimalistLanding() {
 
             shots.push({
                 start: [startX, startZ],
-                end: [0, 1.575],
+                end: [0, 1.575], // Keeps X,Z center
+                endY: 2.5, // New prop for visual swish through
                 height: height,
                 color: '#ffffff',
                 delay: delay
@@ -417,15 +513,20 @@ export default function MinimalistLanding() {
                 <Canvas orthographic gl={{ antialias: true }} dpr={[1, 2]}>
                     <CameraRig stage={stage} />
 
-                    <group position={[5, -5, 5]} rotation={[0, -Math.PI / 2, 0]}>
+                    <group position={[5, -2, 5]} rotation={[0, -Math.PI / 2, 0]}>
                         <GeometricCourt />
 
                         {trajectories.map((t, i) => (
                             <OptimizedShootingTrace key={i} {...t} onSwish={handleSwish} />
                         ))}
-                        <SwishManager count={swishCount} />
+                        {/* SwishManager Removed per user request */}
 
-                        <CourtInteraction active={stage === 'selecting_spot'} onSelect={handleSpotSelect} selectedPoint={selectedSpot} />
+                        <CourtInteraction
+                            active={stage === 'selecting_spot'}
+                            onSelect={handleSpotSelect}
+                            selectedPoint={selectedSpot}
+                            onHover={setPreviewSpot}
+                        />
                     </group>
 
                     <ambientLight intensity={0.4} />
@@ -435,8 +536,7 @@ export default function MinimalistLanding() {
 
             {/* UI Layer */}
             <div className="relative z-10 flex flex-col justify-between h-full p-12 pointer-events-none">
-                {/* Header */}
-                <div className="flex justify-between items-start border-t border-white/20 pt-4">
+                <div className="flex justify-between items-start border-t border-white/20 pt-4 max-w-md">
                     <div>
                         <h2 className="text-[10px] text-gray-500 tracking-[0.2em] mb-1">OPTICAL ARRAY: ACTIVE</h2>
                         <h1 className="text-4xl font-light tracking-tighter text-white">
@@ -514,6 +614,21 @@ export default function MinimalistLanding() {
                                         <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-cyan-400 opacity-0 group-hover:opacity-100 transition-all" />
                                     </button>
                                 ))}
+                                <div className="col-span-2 flex gap-2">
+                                    <input
+                                        type="number"
+                                        placeholder="Custom"
+                                        value={customCount}
+                                        onChange={(e) => setCustomCount(e.target.value)}
+                                        className="w-full bg-white/5 border border-white/10 px-4 py-3 text-white focus:border-cyan-500 outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    />
+                                    <button
+                                        onClick={() => customCount && handleCountSelect(parseInt(customCount))}
+                                        className="bg-cyan-500/20 border border-cyan-500/50 text-cyan-400 px-6 hover:bg-cyan-500 hover:text-black transition-colors"
+                                    >
+                                        GO
+                                    </button>
+                                </div>
                             </div>
 
                             <button
@@ -533,6 +648,11 @@ export default function MinimalistLanding() {
                         latency: 12ms
                     </div>
                 </div>
+            </div>
+
+            {/* Dynamic Stats Panel Right Side (Visible during selection) */}
+            <div className="absolute right-0 top-0 h-full w-1/3 z-10 pointer-events-none flex items-center justify-center">
+                <StatsPanel spot={stage === 'selecting_spot' ? previewSpot : selectedSpot} />
             </div>
 
             {/* Global Styles for Animations */}

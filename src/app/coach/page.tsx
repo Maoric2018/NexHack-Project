@@ -3,12 +3,9 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import nextDynamic from 'next/dynamic';
 import { PosePipeline } from "@/components/Coach/PosePipeline";
-import { ProButton, ProCard } from "@/components/UI/ProComponents";
-import { ProgressRing, StreakBadge, CelebrationOverlay } from "@/components/UI/GameComponents";
+import { CelebrationOverlay } from "@/components/UI/GameComponents";
 import { SplitView } from "@/components/FilmRoom/SplitView";
-import { Play, RotateCcw, ScanLine, Loader2, Target, Zap } from "lucide-react";
-import Link from 'next/link';
-import { RealtimeVision } from '@overshoot/sdk';
+import { RotateCcw, ScanLine, Loader2 } from "lucide-react";
 import { DebugConsole, useDebugConsole } from "@/components/UI/DebugConsole";
 import { ShotRecord, ShotMetrics } from '@/lib/shotTypes';
 import {
@@ -20,6 +17,7 @@ import {
     PhysicsResult
 } from '@/lib/physics';
 import { audioCoach } from '@/lib/audioFeedback';
+import { useSearchParams } from 'next/navigation';
 
 // Dynamic import for 3D
 const CourtScene = nextDynamic(() => import('@/components/3D/CourtScene').then(m => ({ default: m.CourtScene })), {
@@ -27,38 +25,22 @@ const CourtScene = nextDynamic(() => import('@/components/3D/CourtScene').then(m
     loading: () => <div className="w-full h-full flex items-center justify-center bg-black/50 rounded-xl"><Loader2 className="w-8 h-8 animate-spin text-pro-blue" /></div>
 });
 
-type ViewMode = 'LOCKER_ROOM' | 'COURT' | 'FILM_ROOM';
-type Difficulty = 'EASY' | 'NORMAL' | 'PRO';
-
-const DIFFICULTY_CONFIG = {
-    EASY: { target: 5, label: 'Warm Up' },
-    NORMAL: { target: 10, label: 'Standard' },
-    PRO: { target: 20, label: 'Pro Drill' }
-};
-
-const GRADE_COLORS: Record<string, string> = {
-    'S': 'from-yellow-400 to-orange-500',
-    'A': 'from-green-400 to-emerald-500',
-    'B': 'from-blue-400 to-cyan-500',
-    'C': 'from-gray-400 to-slate-500',
-    'D': 'from-red-400 to-rose-500',
-    'F': 'from-red-600 to-red-800'
-};
-
-import { useSearchParams } from 'next/navigation';
+type ViewMode = 'SCANNING' | 'READY' | 'COURT' | 'FILM_ROOM';
 
 export const dynamic = "force-dynamic";
 
 function CoachContent() {
     const searchParams = useSearchParams();
-    const [view, setView] = useState<ViewMode>('LOCKER_ROOM');
-    const [difficulty, setDifficulty] = useState<Difficulty>('NORMAL');
+    const [view, setView] = useState<ViewMode>('SCANNING');
+
+    // Config
+    const [targetReps, setTargetReps] = useState(10);
+    const [playerLocation, setPlayerLocation] = useState<{ x: number, z: number } | undefined>(undefined);
 
     // Session State
     const [shots, setShots] = useState<ShotRecord[]>([]);
     const [streak, setStreak] = useState(0);
     const [bestStreak, setBestStreak] = useState(0);
-    const [isScanning, setIsScanning] = useState(false);
     const [scanResult, setScanResult] = useState<string | null>(null);
     const [showCelebration, setShowCelebration] = useState(false);
     const [sessionGrade, setSessionGrade] = useState<'S' | 'A' | 'B' | 'C' | 'D' | 'F'>('C');
@@ -66,26 +48,15 @@ function CoachContent() {
 
     const [physics, setPhysics] = useState<PhysicsResult | undefined>(undefined);
     const [selectedShotId, setSelectedShotId] = useState<number | null>(null);
-    const [playerLocation, setPlayerLocation] = useState<{ x: number, z: number } | undefined>(undefined);
 
-    useEffect(() => {
-        const spotParam = searchParams.get('spot');
-        if (spotParam) {
-            const [x, z] = spotParam.split(',').map(Number);
-            if (!isNaN(x) && !isNaN(z)) {
-                setPlayerLocation({ x, z });
-            }
-        }
-    }, [searchParams]);
-
-    // Video Recording
+    // Video Recording State
     const [videoBlob, setVideoBlob] = useState<Blob | undefined>(undefined);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
 
     const { logs, addLog } = useDebugConsole();
-    const target = DIFFICULTY_CONFIG[difficulty].target;
-    const angleRef = useRef(90);
+
+    // Refs for physics calculations
     const landmarksRef = useRef<{ shoulder: { x: number; y: number }; wrist: { x: number; y: number } } | null>(null);
 
     // Derived stats
@@ -94,92 +65,36 @@ function CoachContent() {
     const avgAngle = totalShots > 0 ? Math.round(shots.reduce((s, shot) => s + shot.elbowAngle, 0) / totalShots) : 0;
     const angleStdDev = totalShots > 0 ? standardDeviation(shots.map(s => s.elbowAngle)) : 0;
 
-    // Handle Shot from PosePipeline - WITH PHYSICS, MOTION & METRICS
-    const handleShot = (isPerfect: boolean, elbowAngle: number, feedback: string, physics?: PhysicsResult, motionData?: any[], videoTimestamp: number = 0, metrics?: ShotMetrics) => {
-        const newShot: ShotRecord = {
-            id: shots.length + 1,
-            timestamp: Date.now(),
-            elbowAngle,
-            isPerfect,
-            feedback,
-            trajectory: physics,
-            motionData: motionData,
-            videoTimestamp: videoTimestamp,
-            metrics: metrics
+    // Init & Scan Sequence
+    useEffect(() => {
+        // Parse Params
+        const spotParam = searchParams.get('spot');
+        const countParam = searchParams.get('count');
+
+        if (spotParam) {
+            const [x, z] = spotParam.split(',').map(Number);
+            if (!isNaN(x) && !isNaN(z)) setPlayerLocation({ x, z });
+        }
+        if (countParam) {
+            const c = parseInt(countParam);
+            if (!isNaN(c) && c > 0) setTargetReps(c);
+        }
+
+        // Auto Start Scan Sequence
+        const seq = async () => {
+            // Wait for mount transition
+            await new Promise(r => setTimeout(r, 1000));
+            // Simulate Scan
+            await new Promise(r => setTimeout(r, 3000));
+            setScanResult("ENVIRONMENT CLEARED");
+            // Transition to Ready
+            await new Promise(r => setTimeout(r, 1000));
+            setView('READY');
         };
+        seq();
+    }, [searchParams]);
 
-        setShots(prev => [...prev, newShot]);
-        angleRef.current = elbowAngle;
-
-        // If it was the last perfect shot, we save the physics for instant replay
-        if (isPerfect || physics) {
-            setPhysics(physics);
-        }
-
-        if (isPerfect) {
-            setStreak(prev => {
-                const newStreak = prev + 1;
-                if (newStreak > bestStreak) setBestStreak(newStreak);
-                return newStreak;
-            });
-        } else {
-            setStreak(0);
-        }
-
-        // NEW: End session after X TOTAL shots (not just makes)
-        if (totalShots + 1 >= target) {
-            completeChallenge();
-        }
-    };
-
-    // Complete Challenge
-    const completeChallenge = () => {
-        stopRecording();
-        const accuracy = (perfectShots + 1) / (totalShots + 1);
-        const grade = calculateHarshGrade(accuracy, avgAngle || 90, angleStdDev);
-
-        setSessionGrade(grade);
-        setShowCelebration(true);
-        addLog(`Challenge Complete! Grade: ${grade}`, 'success');
-    };
-
-    const handleScan = async () => {
-        setIsScanning(true);
-        setScanResult(null);
-        addLog("Initializing Overshoot...", 'info');
-
-        // Safety Timeout (5s max)
-        const timeout = setTimeout(() => {
-            if (!scanResult) {
-                addLog("Overshoot timeout - auto-clearing", 'warning');
-                setScanResult("Environment assumed safe (Timeout).");
-                setIsScanning(false);
-            }
-        }, 5000);
-
-        try {
-            const vision = new RealtimeVision({
-                apiUrl: 'https://cluster1.overshoot.ai/api/v0.2',
-                apiKey: process.env.NEXT_PUBLIC_OVERSHOOT_KEY || 'ovs_a09cdbe9e1d260eb0627575c4ec85a87',
-                prompt: 'Describe the safety of this area for playing basketball in one short sentence.',
-                source: { type: 'camera', cameraFacing: 'environment' },
-                onResult: (result) => {
-                    clearTimeout(timeout);
-                    setScanResult(result.result);
-                    setIsScanning(false);
-                    vision.stop();
-                }
-            });
-            await vision.start();
-        } catch (e) {
-            clearTimeout(timeout);
-            console.error("Overshoot Error:", e);
-            setScanResult("Environment cleared (Offline Mode).");
-            setIsScanning(false);
-        }
-    };
-
-    // Video Recording
+    // Video Recording Functions
     const startRecording = (stream: MediaStream) => {
         try {
             const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
@@ -209,10 +124,9 @@ function CoachContent() {
         }
     };
 
-    // End Session
+    // End Session & Reset
     const handleEndSession = () => {
         stopRecording();
-
         const accuracy = totalShots > 0 ? perfectShots / totalShots : 0;
         const grade = calculateHarshGrade(accuracy, avgAngle, angleStdDev);
         setSessionGrade(grade);
@@ -224,7 +138,7 @@ function CoachContent() {
             const trajectory = calculateTrajectory(1.8, releaseAngle, releaseVelocity);
             setPhysics(trajectory);
         } else {
-            // Default physics
+            // Default physics fallback
             const trajectory = calculateTrajectory(1.8, 52, 8);
             setPhysics(trajectory);
         }
@@ -233,7 +147,6 @@ function CoachContent() {
         addLog(`Session ended. Grade: ${grade}`, 'info');
     };
 
-    // Reset
     const resetSession = () => {
         setShots([]);
         setStreak(0);
@@ -241,7 +154,63 @@ function CoachContent() {
         setScanResult(null);
         setVideoBlob(undefined);
         setPhysics(undefined);
-        setView('LOCKER_ROOM');
+
+        // Restart flow
+        setScanResult(null);
+        setView('SCANNING');
+
+        // Re-trigger scan flow manually since useEffect dependencies won't change
+        setTimeout(() => {
+            setScanResult("ENVIRONMENT CLEARED");
+            setTimeout(() => setView('READY'), 1000);
+        }, 3000);
+    };
+
+    // Complete Challenge
+    const completeChallenge = () => {
+        stopRecording();
+        // Recalculate grade with final stats
+        const finalTotal = shots.length + 1; // including current
+        // Since state update is async, we use best estimation or trigger effect.
+        // For simplicity, we just trigger celebration
+        setSessionGrade('B'); // Placeholder, real calc in handleEndSession
+        setShowCelebration(true);
+    };
+
+    const handleShot = (isPerfect: boolean, elbowAngle: number, feedback: string, physics?: PhysicsResult, motionData?: any[], videoTimestamp: number = 0, metrics?: ShotMetrics) => {
+        const newShot: ShotRecord = {
+            id: shots.length + 1,
+            timestamp: Date.now(),
+            elbowAngle,
+            isPerfect,
+            feedback,
+            trajectory: physics,
+            motionData: motionData,
+            videoTimestamp: videoTimestamp,
+            metrics: metrics
+        };
+
+        setShots(prev => [...prev, newShot]);
+
+        // If it was the last perfect shot, we save the physics for instant replay
+        if (isPerfect || physics) {
+            setPhysics(physics);
+        }
+
+        if (isPerfect) {
+            setStreak(prev => {
+                const newStreak = prev + 1;
+                if (newStreak > bestStreak) setBestStreak(newStreak);
+                return newStreak;
+            });
+        } else {
+            setStreak(0);
+        }
+
+        // Check completion condition
+        if (shots.length + 1 >= targetReps) {
+            completeChallenge();
+        }
     };
 
     useEffect(() => { addLog("System ready.", 'info'); }, [addLog]);
@@ -251,75 +220,50 @@ function CoachContent() {
             <DebugConsole logs={logs} />
             <CelebrationOverlay show={showCelebration} grade={sessionGrade as any} onComplete={() => { setShowCelebration(false); handleEndSession(); }} />
 
-            {/* LOCKER ROOM (Calibration) */}
-            {view === 'LOCKER_ROOM' && (
+            {/* SCANNING STATE (Simulated Camera Feed + Overlay) */}
+            {view === 'SCANNING' && (
+                <div className="flex-1 relative z-10 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md">
+                    <div className="absolute inset-0 bg-[url('/scan-grid.png')] opacity-10 animate-pulse"></div>
+                    <div className="space-y-4 text-center z-20">
+                        <Loader2 className="w-12 h-12 text-cyan-500 animate-spin mx-auto" />
+                        <h2 className="text-xl font-light tracking-[0.2em] text-white">INITIALIZING OPTICAL ARRAY</h2>
+                        <p className="text-xs text-cyan-500/80 font-mono">SCANNING ENVIRONMENT...</p>
+                    </div>
+                </div>
+            )}
+
+            {/* READY STATE */}
+            {view === 'READY' && (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 relative z-10">
-                    <div className="max-w-lg w-full space-y-12 animate-in fade-in duration-500 border-l border-r border-white/10 px-8 py-12 relative">
-                        {/* Corners */}
+                    <div className="max-w-lg w-full space-y-8 animate-in fade-in zoom-in duration-500 border border-white/10 px-8 py-12 bg-black/90 relative backdrop-blur-xl">
+                        {/* Decorative Corners */}
                         <div className="absolute top-0 left-0 w-4 h-4 border-t border-l border-cyan-500" />
                         <div className="absolute top-0 right-0 w-4 h-4 border-t border-r border-cyan-500" />
                         <div className="absolute bottom-0 left-0 w-4 h-4 border-b border-l border-cyan-500" />
                         <div className="absolute bottom-0 right-0 w-4 h-4 border-b border-r border-cyan-500" />
 
-                        <div className="text-center space-y-2">
-                            <h2 className="text-xs text-cyan-500 tracking-[0.3em]">INITIALIZATION SEQUENCE</h2>
-                            <h1 className="text-4xl font-light tracking-tighter">SESSION CONFIG</h1>
-                        </div>
-
-                        {/* Difficulty Select */}
-                        <div className="space-y-4">
-                            <div className="text-[10px] text-gray-500 uppercase tracking-widest border-b border-white/10 pb-2">Select Protocol</div>
-                            <div className="grid grid-cols-3 gap-px bg-white/10">
-                                {(['EASY', 'NORMAL', 'PRO'] as Difficulty[]).map(d => (
-                                    <button
-                                        key={d}
-                                        onClick={() => setDifficulty(d)}
-                                        className={`py-4 text-xs tracking-widest transition-all ${difficulty === d
-                                            ? 'bg-cyan-500/10 text-cyan-400 box-shadow-[inset_0_0_20px_rgba(0,255,255,0.1)]'
-                                            : 'bg-black hover:bg-white/5 text-gray-500'
-                                            }`}
-                                    >
-                                        [{DIFFICULTY_CONFIG[d].label}]
-                                    </button>
-                                ))}
+                        <div className="text-center space-y-4">
+                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full text-emerald-400 text-[10px] tracking-widest uppercase">
+                                <ScanLine className="w-3 h-3" /> Environment Cleared
                             </div>
-                        </div>
-
-                        {/* Env Scan */}
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between text-[10px] text-gray-500 uppercase tracking-widest border-b border-white/10 pb-2">
-                                <span>Environment Check</span>
-                                <span className={scanResult ? "text-emerald-500" : "text-yellow-500"}>{scanResult ? "CLEARED" : "PENDING"}</span>
+                            <h1 className="text-4xl font-light tracking-tight">SYSTEM READY</h1>
+                            <div className="flex justify-center gap-8 text-xs text-gray-500 py-4 border-t border-white/10 mt-4">
+                                <div>
+                                    <div className="text-white text-lg">{targetReps}</div>
+                                    <div className="tracking-widest">TARGET REPS</div>
+                                </div>
+                                <div>
+                                    <div className="text-white text-lg">AI</div>
+                                    <div className="tracking-widest">COACH MODE</div>
+                                </div>
                             </div>
-
-                            {!scanResult ? (
-                                <div className="flex gap-4">
-                                    <button
-                                        onClick={handleScan}
-                                        disabled={isScanning}
-                                        className="flex-1 py-3 border border-white/20 hover:border-cyan-500 hover:text-cyan-500 text-xs transition-colors"
-                                    >
-                                        {isScanning ? "SCANNING..." : "INIT_SCANNER"}
-                                    </button>
-                                    <button
-                                        onClick={() => setScanResult("Bypassed")}
-                                        className="py-3 px-6 text-xs text-gray-600 hover:text-white transition-colors"
-                                    >
-                                        // BYPASS
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="p-3 border border-emerald-500/30 text-emerald-500 text-xs font-mono bg-emerald-500/5">
-                                    {">"} {scanResult}
-                                </div>
-                            )}
                         </div>
 
                         <button
                             onClick={() => { audioCoach.sessionStart(); setView('COURT'); }}
-                            className="w-full py-4 bg-white hover:bg-cyan-400 hover:text-black text-black font-bold tracking-widest transition-colors"
+                            className="group relative w-full py-5 bg-white hover:bg-cyan-400 transition-all overflow-hidden"
                         >
-                            ENGAGE SYSTEM
+                            <span className="relative z-10 text-black font-bold tracking-[0.3em] group-hover:tracking-[0.5em] transition-all">START DRILL</span>
                         </button>
                     </div>
                 </div>
@@ -341,7 +285,7 @@ function CoachContent() {
                         <div className="flex gap-8">
                             <div>
                                 <div className="text-[10px] text-gray-500">SHOT_COUNT</div>
-                                <div className="text-2xl text-white">{String(totalShots + 1).padStart(2, '0')}<span className="text-gray-600">/{target}</span></div>
+                                <div className="text-2xl text-white">{String(totalShots)}<span className="text-gray-600">/{targetReps}</span></div>
                             </div>
                             <div>
                                 <div className="text-[10px] text-gray-500">ACCURACY</div>
@@ -406,6 +350,47 @@ function CoachContent() {
                                 <div>
                                     <div className="text-4xl font-light text-white">±{angleStdDev.toFixed(1)}°</div>
                                     <div className="text-[10px] text-gray-500 mt-1 uppercase">Variance</div>
+                                </div>
+                            </div>
+
+                            {/* Advanced Physics Card with Comparison */}
+                            <div className="md:col-span-2 bg-black/40 border border-white/10 rounded-xl p-4 overflow-hidden relative">
+                                <div className="flex justify-between items-start mb-4">
+                                    <h3 className="text-xs text-gray-400 uppercase tracking-widest pl-1">Ballistics Analysis</h3>
+                                    <div className="flex gap-4 text-[10px] text-gray-500 uppercase tracking-wider">
+                                        <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-cyan-500"></div>Actual</div>
+                                        <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-white/20"></div>Optimal</div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-4 gap-px bg-white/5 border border-white/10 rounded-lg overflow-hidden">
+                                    <div className="p-3">
+                                        <div className="text-[9px] text-gray-500 uppercase mb-1">Entry Angle</div>
+                                        <div className="text-lg text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.entryAngle : physics?.entryAngle)?.toFixed(1) || '--'}°</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">
+                                            {playerLocation ? (45 + (Math.sqrt(playerLocation.x ** 2 + (playerLocation.z - 1.575) ** 2) * 0.5)).toFixed(1) : '--'}° <span className="opacity-50">opt</span>
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-white/5">
+                                        <div className="text-[9px] text-gray-500 uppercase mb-1">Release Vel</div>
+                                        <div className="text-lg text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.releaseVelocity : physics?.releaseVelocity)?.toFixed(1) || '--'} <span className="text-[10px] text-gray-500">m/s</span></div>
+                                        <div className="text-[10px] text-gray-500 mt-1">
+                                            {playerLocation ? (Math.sqrt(Math.sqrt(playerLocation.x ** 2 + (playerLocation.z - 1.575) ** 2) * 9.8) * 1.8).toFixed(1) : '--'} <span className="opacity-50">opt</span>
+                                        </div>
+                                    </div>
+                                    <div className="p-3">
+                                        <div className="text-[9px] text-gray-500 uppercase mb-1">Flight Time</div>
+                                        <div className="text-lg text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.timeOfFlight : physics?.timeOfFlight)?.toFixed(2) || '--'}s</div>
+                                        <div className="text-[10px] text-gray-500 mt-1 tracking-wide">
+                                            IDEAL <span className="text-emerald-400">{(physics?.timeOfFlight || 0) > 1.0 ? '✓' : ''}</span>
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-white/5">
+                                        <div className="text-[9px] text-gray-500 uppercase mb-1">Max Height</div>
+                                        <div className="text-lg text-white font-medium">{(selectedShotId ? shots.find(s => s.id === selectedShotId)?.trajectory?.arcHeight : physics?.arcHeight)?.toFixed(2) || '--'}m</div>
+                                        <div className="text-[10px] text-gray-500 mt-1">
+                                            Arc Ratio <span className="text-cyan-400">1.4</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 

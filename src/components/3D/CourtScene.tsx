@@ -291,15 +291,19 @@ export function CourtScene({ physics, motionData, isPlaying, playerPosition }: C
 
                     <PlayerGroup>
                         <SkeletonPlayer motionData={motionData} isPlaying={isPlaying} frameIndex={frameIndex} />
-                        {/* Glowing Balls needs world space or local space? 
-                            Trajectory is calculated in world space presumably relative to player? 
-                            Or specific court coordinates?
-                            GlowingBall receives 'trajectory' which is array of {x,y,z}.
-                            Typically 'physics.ts' generates trajectory from (0,0,0) relative to player?
-                            Ref check: 'calculateTrajectory' uses (0, y0, 0) as start.
-                            So trajectory is LOCAL to player.
-                            So wrapping in PlayerGroup is CORRECT.
-                        */}
+
+                        {/* Dotted Trajectory Path */}
+                        {physics?.trajectoryPoints && physics.trajectoryPoints.length > 1 && (
+                            <Line
+                                points={physics.trajectoryPoints.map(p => new THREE.Vector3(p.x, p.y, p.z + 2))}
+                                color="#22d3ee"
+                                lineWidth={1.5}
+                                dashed
+                                dashSize={0.15}
+                                gapSize={0.1}
+                            />
+                        )}
+
                         <GlowingBall
                             isPlaying={isPlaying}
                             frameIndex={frameIndex}
