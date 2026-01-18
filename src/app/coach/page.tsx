@@ -263,53 +263,63 @@ function CoachContent() {
                 </div>
             )}
 
-            {/* READY STATE - Centered with Premium Styling */}
+            {/* READY STATE - Refined Premium Styling */}
             {view === 'READY' && (
                 <div className="flex-1 flex items-center justify-center p-8 relative z-10">
-                    <div className="w-full max-w-lg space-y-6 animate-in fade-in zoom-in duration-500 border border-white/10 p-10 bg-black/95 relative backdrop-blur-xl rounded-lg">
-                        {/* Decorative Corners */}
-                        <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-cyan-500 rounded-tl-lg" />
-                        <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-cyan-500 rounded-tr-lg" />
-                        <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-cyan-500 rounded-bl-lg" />
-                        <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-cyan-500 rounded-br-lg" />
+                    <div className="w-full max-w-md space-y-6 animate-in fade-in zoom-in duration-500 border border-white/10 p-8 bg-black/95 relative backdrop-blur-xl rounded-xl">
+                        {/* Minimal Corner Accents */}
+                        <div className="absolute top-0 left-0 w-5 h-5 border-t-2 border-l-2 border-cyan-500/60 rounded-tl-xl" />
+                        <div className="absolute top-0 right-0 w-5 h-5 border-t-2 border-r-2 border-cyan-500/60 rounded-tr-xl" />
+                        <div className="absolute bottom-0 left-0 w-5 h-5 border-b-2 border-l-2 border-cyan-500/60 rounded-bl-xl" />
+                        <div className="absolute bottom-0 right-0 w-5 h-5 border-b-2 border-r-2 border-cyan-500/60 rounded-br-xl" />
 
                         <div className="text-center space-y-5">
-                            <h1 className="text-4xl font-extralight tracking-wide text-white">READY TO GO</h1>
+                            <h1 className="text-3xl font-light tracking-widest text-white">READY TO GO</h1>
 
-                            {/* Overshoot Scan Result Box */}
+                            {/* Overshoot Scan Result - Compact */}
                             {scanResult && (
-                                <div className={`p-4 rounded-lg border ${scanResult.toLowerCase().includes('unsafe') || scanResult.toLowerCase().includes('not') || scanResult.toLowerCase().includes('bad')
-                                    ? 'bg-red-500/10 border-red-500/30'
-                                    : 'bg-emerald-500/10 border-emerald-500/30'
+                                <div className={`px-4 py-3 rounded-lg text-left ${scanResult.toLowerCase().includes('unsafe') || scanResult.toLowerCase().includes('not') || scanResult.toLowerCase().includes('bad')
+                                    ? 'bg-red-950/50 border border-red-500/20'
+                                    : 'bg-cyan-950/30 border border-cyan-500/20'
                                     }`}>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <div className="w-5 h-5 rounded bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-[8px] font-bold text-black">O</div>
-                                        <span className="text-[10px] text-gray-400 uppercase tracking-widest">Note from Overshoot</span>
+                                    <div className="flex items-center gap-2">
+                                        {/* Overshoot Logo SVG */}
+                                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <circle cx="12" cy="12" r="10" stroke="url(#overshoot-gradient)" strokeWidth="2" />
+                                            <circle cx="12" cy="12" r="4" fill="url(#overshoot-gradient)" />
+                                            <defs>
+                                                <linearGradient id="overshoot-gradient" x1="0" y1="0" x2="24" y2="24">
+                                                    <stop stopColor="#22d3ee" />
+                                                    <stop offset="1" stopColor="#3b82f6" />
+                                                </linearGradient>
+                                            </defs>
+                                        </svg>
+                                        <span className="text-[9px] text-gray-500 uppercase tracking-wider">Overshoot</span>
                                     </div>
-                                    <p className={`text-sm ${scanResult.toLowerCase().includes('unsafe') || scanResult.toLowerCase().includes('not') || scanResult.toLowerCase().includes('bad')
+                                    <p className={`text-xs mt-1.5 ${scanResult.toLowerCase().includes('unsafe') || scanResult.toLowerCase().includes('not') || scanResult.toLowerCase().includes('bad')
                                         ? 'text-red-400'
-                                        : 'text-emerald-400'
+                                        : 'text-cyan-400'
                                         }`}>{scanResult}</p>
                                 </div>
                             )}
 
-                            <div className="flex justify-center gap-12 text-gray-400 py-5 border-t border-b border-white/10">
+                            <div className="flex justify-center gap-10 text-gray-400 py-4 border-t border-b border-white/5">
                                 <div className="text-center">
-                                    <div className="text-white text-4xl font-light">{targetReps}</div>
-                                    <div className="tracking-widest text-[10px] uppercase mt-1">Target Reps</div>
+                                    <div className="text-white text-3xl font-extralight">{targetReps}</div>
+                                    <div className="tracking-widest text-[9px] uppercase mt-1 text-gray-500">Reps</div>
                                 </div>
                                 <div className="text-center">
-                                    <div className="text-cyan-400 text-4xl font-light">AI</div>
-                                    <div className="tracking-widest text-[10px] uppercase mt-1">Coach Mode</div>
+                                    <div className="text-cyan-400 text-3xl font-extralight">AI</div>
+                                    <div className="tracking-widest text-[9px] uppercase mt-1 text-gray-500">Coach</div>
                                 </div>
                             </div>
                         </div>
 
                         <button
                             onClick={() => { audioCoach.sessionStart(); setView('COURT'); }}
-                            className="group relative w-full py-5 bg-white hover:bg-cyan-400 transition-all overflow-hidden rounded-lg shadow-lg hover:shadow-cyan-500/30"
+                            className="group relative w-full py-4 bg-white hover:bg-cyan-400 transition-all overflow-hidden rounded-lg"
                         >
-                            <span className="relative z-10 text-black font-bold tracking-[0.25em] group-hover:tracking-[0.35em] transition-all">START DRILL</span>
+                            <span className="relative z-10 text-black font-semibold tracking-[0.2em] text-sm">START DRILL</span>
                         </button>
                     </div>
                 </div>

@@ -19,41 +19,85 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 // ------------------------------------------------------------------
 
 function CameraRig({ stage, selectedSpot }: { stage: 'landing' | 'selecting_spot' | 'selecting_count' | 'transitioning', selectedSpot?: { x: number, z: number } | null }) {
+    // Refs for transition animation state
+    const transitionState = useRef<{
+        startTime: number | null;
+        startPos: THREE.Vector3 | null;
+        startLookAt: THREE.Vector3 | null;
+        startZoom: number | null;
+    }>({ startTime: null, startPos: null, startLookAt: null, startZoom: null });
+
     useFrame((state, delta) => {
         let targetLookAt: THREE.Vector3;
         let targetPos: THREE.Vector3;
         let targetZoom: number;
 
-        // Court group is at position [5, -2, 5] with -90deg Y rotation
-        // Pin coords are in court-local space, need to transform for camera
-        const courtOffset = new THREE.Vector3(5, -2, 5);
+        const courtCenter = new THREE.Vector3(5, 0, 5);
 
         if (stage === 'landing') {
-            // Isometric view looking at court center
-            targetLookAt = new THREE.Vector3(5, 0, 5);
-            targetPos = new THREE.Vector3(-8, 15, 20);
+            // Isometric view from upper-left
+            // Shifted rig by (3,0,3) relative to ORIGINAL (0,1,0)/(-15,18,18)
+            // Preserves original orientation vector (-15, 17, 18)
+            targetLookAt = new THREE.Vector3(3, 1, 3);
+            targetPos = new THREE.Vector3(-17, 18, 21);
             targetZoom = 38;
         } else if (stage === 'transitioning' && selectedSpot) {
-            // Transform pin from court-local to world space (accounting for -90deg Y rotation)
-            // In court-local: x goes right, z goes forward (toward hoop)
-            // After -90deg Y rotation: local X -> world -Z, local Z -> world X
-            const worldX = courtOffset.x - selectedSpot.z;
-            const worldZ = courtOffset.z + selectedSpot.x;
-
-            targetLookAt = new THREE.Vector3(worldX, 0.5, worldZ);
-            targetPos = new THREE.Vector3(worldX + 3, 5, worldZ + 6);
-            targetZoom = 80;
+            // Target: Zoom into pin
+            const worldX = courtCenter.x - selectedSpot.z;
+            const worldZ = courtCenter.z + selectedSpot.x;
+            targetLookAt = new THREE.Vector3(worldX, 0, worldZ);
+            targetPos = new THREE.Vector3(worldX + 2, 8, worldZ + 8); // Closer zoom target
+            targetZoom = 120; // Higher zoom for "going into" the pin
         } else {
-            // Selection: Top-down centered on court
-            targetLookAt = new THREE.Vector3(5, 0, 5);
-            targetPos = new THREE.Vector3(5, 40, 12);
+            // Selection view
+            targetLookAt = new THREE.Vector3(8, -25, 5);
+            targetPos = new THREE.Vector3(8, 40, 12);
             targetZoom = 50;
         }
 
-        const lerpSpeed = stage === 'transitioning' ? 2.5 : 2.0;
-        state.camera.position.lerp(targetPos, delta * lerpSpeed);
-        state.camera.zoom = THREE.MathUtils.lerp(state.camera.zoom, targetZoom, delta * lerpSpeed);
-        state.camera.lookAt(targetLookAt);
+        if (stage === 'transitioning') {
+            // Initialize transition state with PERFECT CONTINUITY
+            if (!transitionState.current.startTime) {
+                transitionState.current.startTime = state.clock.elapsedTime;
+                transitionState.current.startPos = state.camera.position.clone();
+                transitionState.current.startZoom = state.camera.zoom;
+
+                // Calculate actual current lookAt point on Y=0 plane to prevent jump
+                const dir = new THREE.Vector3();
+                state.camera.getWorldDirection(dir);
+                // Plane intersection: (0 - camY) / dirY
+                const distToPlane = -state.camera.position.y / dir.y;
+                transitionState.current.startLookAt = state.camera.position.clone().add(dir.multiplyScalar(distToPlane));
+            }
+
+            // Calculate progress (2.2s duration to match fade)
+            const duration = 2.2;
+            const elapsed = state.clock.elapsedTime - transitionState.current.startTime;
+            let t = Math.min(elapsed / duration, 1);
+
+            // Ease-In Cubic (Start slow, accelerate) -> t * t * t
+            // This ensures velocity starts at 0 and increases
+            const easeT = t * t * t;
+
+            if (transitionState.current.startPos && transitionState.current.startLookAt && transitionState.current.startZoom) {
+                state.camera.position.lerpVectors(transitionState.current.startPos, targetPos, easeT);
+                state.camera.zoom = THREE.MathUtils.lerp(transitionState.current.startZoom, targetZoom, easeT);
+
+                // Interpolate LookAt
+                const currentLookAt = new THREE.Vector3().lerpVectors(transitionState.current.startLookAt, targetLookAt, easeT);
+                state.camera.lookAt(currentLookAt);
+            }
+        } else {
+            // Reset transition state if not transitioning
+            transitionState.current.startTime = null;
+
+            // Standard smooth damping for non-transition stages
+            const lerpSpeed = 2.5;
+            state.camera.position.lerp(targetPos, delta * lerpSpeed);
+            state.camera.zoom = THREE.MathUtils.lerp(state.camera.zoom, targetZoom, delta * lerpSpeed);
+            state.camera.lookAt(targetLookAt);
+        }
+
         state.camera.updateProjectionMatrix();
     });
     return null;
@@ -548,7 +592,7 @@ export default function MinimalistLanding() {
                 <Canvas orthographic gl={{ antialias: true }} dpr={[1, 2]}>
                     <CameraRig stage={stage} selectedSpot={selectedSpot} />
 
-                    <group position={[5, -2, 5]} rotation={[0, -Math.PI / 2, 0]}>
+                    <group position={[17, -2, 7]} rotation={[0, -Math.PI / 2, 0]}>
                         <GeometricCourt />
 
                         {stage !== 'transitioning' && trajectories.map((t, i) => (
