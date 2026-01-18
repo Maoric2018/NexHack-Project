@@ -18,20 +18,41 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 // UTILS
 // ------------------------------------------------------------------
 
-function CameraRig({ stage }: { stage: 'landing' | 'selecting_spot' | 'selecting_count' }) {
+function CameraRig({ stage, selectedSpot }: { stage: 'landing' | 'selecting_spot' | 'selecting_count' | 'transitioning', selectedSpot?: { x: number, z: number } | null }) {
     useFrame((state, delta) => {
-        // Shift focus: center on Y=1 to bring scene up
-        const targetLookAt = new THREE.Vector3(0, 1, 0);
+        let targetLookAt: THREE.Vector3;
+        let targetPos: THREE.Vector3;
+        let targetZoom: number;
 
-        // Landing: Slightly left-above, Selection: Top-down centered on court
-        const targetPos = stage === 'landing'
-            ? new THREE.Vector3(-15, 18, 18)
-            : new THREE.Vector3(0, 40, 5);
+        // Court group is at position [5, -2, 5] with -90deg Y rotation
+        // Pin coords are in court-local space, need to transform for camera
+        const courtOffset = new THREE.Vector3(5, -2, 5);
 
-        const targetZoom = stage === 'landing' ? 40 : 55;
+        if (stage === 'landing') {
+            // Isometric view looking at court center
+            targetLookAt = new THREE.Vector3(5, 0, 5);
+            targetPos = new THREE.Vector3(-8, 15, 20);
+            targetZoom = 38;
+        } else if (stage === 'transitioning' && selectedSpot) {
+            // Transform pin from court-local to world space (accounting for -90deg Y rotation)
+            // In court-local: x goes right, z goes forward (toward hoop)
+            // After -90deg Y rotation: local X -> world -Z, local Z -> world X
+            const worldX = courtOffset.x - selectedSpot.z;
+            const worldZ = courtOffset.z + selectedSpot.x;
 
-        state.camera.position.lerp(targetPos, delta * 2.0);
-        state.camera.zoom = THREE.MathUtils.lerp(state.camera.zoom, targetZoom, delta * 2.0);
+            targetLookAt = new THREE.Vector3(worldX, 0.5, worldZ);
+            targetPos = new THREE.Vector3(worldX + 3, 5, worldZ + 6);
+            targetZoom = 80;
+        } else {
+            // Selection: Top-down centered on court
+            targetLookAt = new THREE.Vector3(5, 0, 5);
+            targetPos = new THREE.Vector3(5, 40, 12);
+            targetZoom = 50;
+        }
+
+        const lerpSpeed = stage === 'transitioning' ? 2.5 : 2.0;
+        state.camera.position.lerp(targetPos, delta * lerpSpeed);
+        state.camera.zoom = THREE.MathUtils.lerp(state.camera.zoom, targetZoom, delta * lerpSpeed);
         state.camera.lookAt(targetLookAt);
         state.camera.updateProjectionMatrix();
     });
@@ -460,10 +481,12 @@ export default function MinimalistLanding() {
     const [swishCount, setSwishCount] = useState(0);
 
     // Interaction State
-    const [stage, setStage] = useState<'landing' | 'selecting_spot' | 'selecting_count'>('landing');
+    const [stage, setStage] = useState<'landing' | 'selecting_spot' | 'selecting_count' | 'transitioning'>('landing');
     const [selectedSpot, setSelectedSpot] = useState<{ x: number, z: number } | null>(null);
     const [previewSpot, setPreviewSpot] = useState<{ x: number, z: number } | null>(null);
     const [customCount, setCustomCount] = useState("");
+    const [fadeOpacity, setFadeOpacity] = useState(0);
+    const [pendingCount, setPendingCount] = useState(0);
 
     const handleSwish = () => setSwishCount(c => c + 1);
 
@@ -502,8 +525,20 @@ export default function MinimalistLanding() {
     };
 
     const handleCountSelect = (count: number) => {
-        const spotStr = selectedSpot ? `${selectedSpot.x.toFixed(2)},${selectedSpot.z.toFixed(2)}` : '0,0';
-        router.push(`/coach?spot=${spotStr}&count=${count}`);
+        // Start transition animation
+        setPendingCount(count);
+        setStage('transitioning');
+
+        // Animate fade in
+        setTimeout(() => setFadeOpacity(0.3), 500);
+        setTimeout(() => setFadeOpacity(0.6), 1000);
+        setTimeout(() => setFadeOpacity(1), 1500);
+
+        // Navigate after animation completes
+        setTimeout(() => {
+            const spotStr = selectedSpot ? `${selectedSpot.x.toFixed(2)},${selectedSpot.z.toFixed(2)}` : '0,0';
+            router.push(`/coach?spot=${spotStr}&count=${count}`);
+        }, 2200);
     };
 
     return (
@@ -511,15 +546,14 @@ export default function MinimalistLanding() {
             {/* 3D Scene */}
             <div className="absolute inset-0 z-0">
                 <Canvas orthographic gl={{ antialias: true }} dpr={[1, 2]}>
-                    <CameraRig stage={stage} />
+                    <CameraRig stage={stage} selectedSpot={selectedSpot} />
 
                     <group position={[5, -2, 5]} rotation={[0, -Math.PI / 2, 0]}>
                         <GeometricCourt />
 
-                        {trajectories.map((t, i) => (
+                        {stage !== 'transitioning' && trajectories.map((t, i) => (
                             <OptimizedShootingTrace key={i} {...t} onSwish={handleSwish} />
                         ))}
-                        {/* SwishManager Removed per user request */}
 
                         <CourtInteraction
                             active={stage === 'selecting_spot'}
@@ -533,6 +567,12 @@ export default function MinimalistLanding() {
                     <pointLight position={[10, 20, 10]} intensity={0.5} />
                 </Canvas>
             </div>
+
+            {/* Fade Overlay for Transition */}
+            <div
+                className="absolute inset-0 z-50 pointer-events-none bg-black transition-opacity duration-700"
+                style={{ opacity: fadeOpacity }}
+            />
 
             {/* UI Layer */}
             <div className="relative z-10 flex flex-col justify-between h-full p-12 pointer-events-none">

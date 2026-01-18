@@ -36,7 +36,13 @@ function NeonCourt() {
                 {/* 3pt Arc */}
                 <Line points={threePtPoints} color="#333" lineWidth={1.5} />
 
-                {/* Key rectangle */}
+                {/* Key Fill (Semi-transparent) */}
+                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.005, 2.9]}>
+                    <planeGeometry args={[4.9, 5.8]} />
+                    <meshBasicMaterial color="#06b6d4" transparent opacity={0.05} />
+                </mesh>
+
+                {/* Key rectangle outline */}
                 <Line
                     points={[
                         new THREE.Vector3(-2.45, 0, 0),
@@ -44,8 +50,8 @@ function NeonCourt() {
                         new THREE.Vector3(2.45, 0, 5.8),
                         new THREE.Vector3(2.45, 0, 0),
                     ]}
-                    color="#333"
-                    lineWidth={1.5}
+                    color="#22d3ee"
+                    lineWidth={2}
                 />
 
                 {/* Free throw circle */}
@@ -58,8 +64,18 @@ function NeonCourt() {
                         }
                         return pts;
                     })()}
-                    color="#222"
+                    color="#333"
                     lineWidth={1}
+                />
+
+                {/* Free throw line */}
+                <Line
+                    points={[
+                        new THREE.Vector3(-2.45, 0, 5.8),
+                        new THREE.Vector3(2.45, 0, 5.8),
+                    ]}
+                    color="#22d3ee"
+                    lineWidth={2}
                 />
             </group>
 
@@ -165,7 +181,7 @@ function SkeletonPlayer({ motionData, isPlaying, frameIndex }: { motionData?: an
 }
 
 // ------------------------------------------------------------------
-// GLOWING BALL WITH TRAIL
+// GLOWING BALL - Clean Cyan
 // ------------------------------------------------------------------
 function GlowingBall({ isPlaying, frameIndex, totalFrames, trajectory }: {
     isPlaying: boolean,
@@ -173,7 +189,6 @@ function GlowingBall({ isPlaying, frameIndex, totalFrames, trajectory }: {
     totalFrames: number,
     trajectory?: { x: number; y: number; z: number }[]
 }) {
-    const meshRef = useRef<THREE.Mesh>(null);
     if (!trajectory || trajectory.length === 0) return null;
 
     const progress = totalFrames > 0 ? (frameIndex / totalFrames) : 0;
@@ -188,28 +203,21 @@ function GlowingBall({ isPlaying, frameIndex, totalFrames, trajectory }: {
 
     const x = p1.x + (p2.x - p1.x) * alpha;
     const y = (p1.y + (p2.y - p1.y) * alpha);
-    const z = (p1.z + (p2.z - p1.z) * alpha) + 2; // +2 for Player Offset Z
+    const z = (p1.z + (p2.z - p1.z) * alpha) + 2;
 
-    // Hide if not playing or finished?
     if (!isPlaying) return null;
 
     return (
         <group position={[x, y, z]}>
-            <Trail
-                width={2}
-                length={8}
-                color={new THREE.Color("#FF4500")}
-                attenuation={(t) => t * t}
-            >
-                <mesh ref={meshRef}>
-                    <sphereGeometry args={[0.12, 16, 16]} />
-                    <meshBasicMaterial color="#FFAA00" />
-                </mesh>
-            </Trail>
-            {/* Glow Halo */}
+            {/* Clean Cyan Ball */}
             <mesh>
-                <sphereGeometry args={[0.2, 16, 16]} />
-                <meshBasicMaterial color="#FF4500" transparent opacity={0.3} depthWrite={false} />
+                <sphereGeometry args={[0.12, 16, 16]} />
+                <meshBasicMaterial color="#22d3ee" />
+            </mesh>
+            {/* Subtle Glow */}
+            <mesh>
+                <sphereGeometry args={[0.18, 16, 16]} />
+                <meshBasicMaterial color="#06b6d4" transparent opacity={0.25} depthWrite={false} />
             </mesh>
         </group>
     );
