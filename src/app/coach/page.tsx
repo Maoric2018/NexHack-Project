@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, Suspense } from 'react';
 import nextDynamic from 'next/dynamic';
 import { PosePipeline } from "@/components/Coach/PosePipeline";
 import { CelebrationOverlay } from "@/components/UI/GameComponents";
+import { LiveKitCoach } from "@/components/Coach/LiveKitCoach";
 import { SplitView } from "@/components/FilmRoom/SplitView";
 import { RotateCcw, ScanLine, Loader2 } from "lucide-react";
 import { DebugConsole, useDebugConsole } from "@/components/UI/DebugConsole";
@@ -202,6 +203,8 @@ function CoachContent() {
         setShowCelebration(true);
     };
 
+    const sendShotToCoachRef = useRef<((data: any) => void) | null>(null);
+
     const handleShot = (isPerfect: boolean, elbowAngle: number, feedback: string, physics?: PhysicsResult, motionData?: any[], videoTimestamp: number = 0, metrics?: ShotMetrics) => {
         const newShot: ShotRecord = {
             id: shots.length + 1,
@@ -216,6 +219,19 @@ function CoachContent() {
         };
 
         setShots(prev => [...prev, newShot]);
+
+        // PUBLISH TO LIVEKIT AGENT
+        if (sendShotToCoachRef.current) {
+            sendShotToCoachRef.current({
+                type: "SHOT_EVENT",
+                data: {
+                    isPerfect,
+                    elbowAngle,
+                    feedback,
+                    metrics
+                }
+            });
+        }
 
         // If it was the last perfect shot, we save the physics for instant replay
         if (isPerfect || physics) {
@@ -322,10 +338,13 @@ function CoachContent() {
                         <PosePipeline
                             mode="TRAIN"
                             onLog={addLog}
-                            onShot={(isPerfect, angle, feedback, physics, motion, ts) => handleShot(isPerfect, angle, isPerfect ? 'GOOD' : 'POOR', physics, motion, ts)}
+                            onShot={(isPerfect, angle, feedback, physics, motion, ts, metrics) => handleShot(isPerfect, angle, isPerfect ? 'GOOD' : 'POOR', physics, motion, ts, metrics)}
                             onStreamReady={startRecording}
                             onLandmarksUpdate={(s, w) => { landmarksRef.current = { shoulder: s, wrist: w }; }}
                         />
+
+                        {/* LIVEKIT COACH CONNECTION */}
+                        <LiveKitCoach onDataChannelReady={(fn) => { sendShotToCoachRef.current = fn; }} />
 
                         {/* Top HUD Bar */}
                         <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-start z-50 pointer-events-none">
