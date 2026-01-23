@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Swish - AI Form Coach 🏀
 
-## Getting Started
+> **🏆 1st Place Winner - Education Track @ NexHacks 2026**
 
-First, run the development server:
+Swish is an AI-powered basketball form coach that democratizes access to professional-level training. By combining real-time computer vision, 3D reconstruction, and voice AI, we help players perfect their shooting form without the need for expensive personal coaches.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+[![Demo Video](https://img.youtube.com/vi/fwBAmvu9X3I/0.jpg)](https://www.youtube.com/watch?v=fwBAmvu9X3I)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+<p align="center">
+  <img src="public/assets/swish-landing.png" width="45%" alt="Landing Page" />
+  <img src="public/assets/swish-dashboard.png" width="45%" alt="Analysis Dashboard" />
+</p>
+<p align="center">
+  <img src="public/assets/swish-coach-view.png" width="45%" alt="Real-time Coach View" />
+  <img src="public/assets/swish-3d-analysis.png" width="45%" alt="3D Reconstruction" />
+</p>
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 💡 Inspiration
+Through our previous involvement in playing basketball, we found that learning proper shooting form was difficult and often required a personal coach to ensure that bad habits are not learned. We realized that professional coaching is inaccessible to many, and self-taught players often struggle to identify biomechanical flaws on their own.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🚀 What it does
+Swish democratizes the learning of proper shooting habits by creating an AI-powered form coach.
+- **Shot Simulation**: Users can select spots on a virtual court to run simulated training drills.
+- **Biometric Tracking**: The application tracks the user's joints in real-time.
+- **Data Analysis**: We capture critical data points like **elbow pitch angle**, **arm velocity**, and **user orientation**.
+- **3D Reconstruction**: Using the biometric data, we generate a 3D reconstruction of the shot to simulate flight path and accuracy.
+- **Real-time Feedback**: An AI voice coach (powered by LiveKit) provides immediate verbal corrections, while the visual interface offers detailed form analytics.
 
-## Learn More
+## 🛠️ How we built it
+We leveraged a modern, high-performance tech stack to bring Swish to life:
 
-To learn more about Next.js, take a look at the following resources:
+- **Frontend**: Built with **React 19** and **Next.js 16** for a performant, server-rendered application. Styled with **Tailwind CSS 4** for a sleek, modern aesthetic.
+- **3D Graphics**: Utilized **Three.js** and **React Three Fiber** to render the interactive court scene and shot visualizations.
+- **AI & Computer Vision**:
+    - **Pose Detection**: A lightweight **TensorFlow.js** model fine-tuned for edge devices to detecting joints efficiently in the browser.
+    - **Video Analysis**: Integrated **Overshoot** to analyze shot video and provide personalized visual feedback.
+- **Real-time Agents**: Used **LiveKit** as the voice agent infrastructure to deliver low-latency verbal coaching to the user.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🚧 Challenges we ran into
+- **Browser-based Joint Detection**: Detecting joints efficiently in a browser was a major hurdle. We initially tried MediaPipe but struggled with frame rates low enough to capture high-velocity movements like a shooting motion. We solved this by switching to a specialized, lightweight TensorFlow model, achieving a **15x increase in detection speed** while maintaining accuracy.
+- **Real-time Commentary**: Traditional voice APIs (like Google's) felt robotic, and LLM APIs were too slow for real-time sports coaching. **LiveKit Agents** proved to be the perfect solution for minimal latency and natural-sounding feedback.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🏅 Accomplishments that we're proud of
+- **3D Reconstruction & Simulation**: Successfully translating 2D video input into a 3D spatial simulation based on joint data.
+- **Real-time Performance**: Achieving smooth joint detection and feedback loops directly in the browser.
+- **Voice Integration**: Building a seamless conversational agent that feels like a real coach on the sidelines.
 
-## Deploy on Vercel
+## 🧠 What we learned
+We gained deep insights into:
+- **LiveKit Agents**: How to architect voice-enabled AI agents for real-time interactivity.
+- **Computer Vision Pipelines**: Balancing accuracy vs. performance when running ML models on the client side.
+- **3D Web Graphics**: constructing immersive 3D environments and running physics simulations within React Three Fiber.
+- **Integration**: Combining multiple sophisticated tools (Overshoot, LiveKit, TensorFlow) into a cohesive user experience.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🔮 What's next for Swish
+We are looking to expand this technology to **other sports and activities** (like tennis serves or golf swings) to further democratize biomechanical feedback and form coaching for everyone.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## 💻 Getting Started
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/swish.git
+   cd swish
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up Environment Variables**
+   Create a `.env.local` file with your API keys (LiveKit, OpenAI, etc.).
+
+4. **Run the development server**
+   ```bash
+   npm run dev
+   ```
+
+5. **Open the app**
+   Visit [http://localhost:3000](http://localhost:3000) to start your training session!
